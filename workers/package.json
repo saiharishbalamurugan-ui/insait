@@ -11,7 +11,7 @@
     "bullmq": "^5.34.6",
     "database": "*",
     "ioredis": "^5.4.1",
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.111.0",
     "dotenv": "^16.4.7"
   },
   "devDependencies": {
