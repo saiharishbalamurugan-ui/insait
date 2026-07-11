@@ -1,0 +1,9 @@
+import IORedis from "ioredis";
+
+export function createRedisConnection() {
+  return new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+    maxRetriesPerRequest: null,
+  });
+}
+
+export const AI_AUDIT_QUEUE_NAME = "ai-audit";

@@ -1,0 +1,24 @@
+node_modules/
+.env
+.env.local
+*.log
+npm-debug.log*
+
+# Next.js
+apps/frontend/.next/
+apps/frontend/out/
+
+# NestJS
+apps/backend/dist/
+
+# Workers
+workers/dist/
+
+# Prisma
+database/generated/
+
+# Misc
+.DS_Store
+*.pem
+coverage/
+.turbo/

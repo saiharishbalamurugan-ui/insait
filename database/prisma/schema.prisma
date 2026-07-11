@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Tenancy & auth ──────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                User[]
+  invoices             Invoice[]
+  timesheets           Timesheet[]
+  quickbooksConnection QuickBooksConnection?
+  emailIngestionLogs   EmailIngestionLog[]
+  chatSessions         ChatSession[]
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  name           String
+  role           UserRole     @default(MEMBER)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  chatSessions ChatSession[]
+}
+
+// ── QuickBooks Online integration (Phase 3) ────────────────────────────
+
+model QuickBooksConnection {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  realmId        String
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  lastSyncedAt   DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// ── Invoices ─────────────────────────────────────────────────────────────
+
+enum InvoiceSource {
+  MANUAL_UPLOAD
+  EMAIL_INGESTION
+}
+
+enum InvoiceStatus {
+  PENDING
+  PROCESSING
+  AUDITED
+  FAILED
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  vendorName    String
+  invoiceNumber String
+  amount        Decimal       @db.Decimal(12, 2)
+  currency      String        @default("USD")
+  issueDate     DateTime
+  dueDate       DateTime?
+  source        InvoiceSource @default(MANUAL_UPLOAD)
+  status        InvoiceStatus @default(PENDING)
+
+  fileUrl       String?
+  extractedData Json?
+
+  lineItems    InvoiceLineItem[]
+  auditReports AuditReport[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+model InvoiceLineItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal @db.Decimal(12, 2)
+  rate        Decimal @db.Decimal(12, 2)
+  amount      Decimal @db.Decimal(12, 2)
+}
+
+// ── Timesheets synced from QuickBooks ───────────────────────────────────
+
+model Timesheet {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  quickbooksId String   @unique
+  employeeName String
+  workDate     DateTime
+  hours        Decimal  @db.Decimal(6, 2)
+  hourlyRate   Decimal  @db.Decimal(12, 2)
+  project      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ── AI audit results (Phase 2) ──────────────────────────────────────────
+
+enum DiscrepancyType {
+  OVERBILLING
+  DUPLICATE_CHARGE
+  RATE_MISMATCH
+  HOURS_MISMATCH
+  MISSING_TIMESHEET
+  UNAUTHORIZED_VENDOR
+  DATE_MISMATCH
+  TAX_ERROR
+  OTHER
+}
+
+enum AuditReportStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model AuditReport {
+  id        String            @id @default(cuid())
+  invoiceId String
+  invoice   Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  status    AuditReportStatus @default(IN_PROGRESS)
+
+  overallRiskScore Int? // 0-100
+  summary          String?
+
+  findings AuditFinding[]
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([invoiceId])
+}
+
+model AuditFinding {
+  id            String          @id @default(cuid())
+  auditReportId String
+  auditReport   AuditReport     @relation(fields: [auditReportId], references: [id], onDelete: Cascade)
+
+  discrepancyType DiscrepancyType
+  severity        Severity
+  explanation     String
+  expectedValue   String?
+  actualValue     String?
+  evidence        Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([auditReportId])
+}
+
+// ── Email ingestion (Phase 4) ───────────────────────────────────────────
+
+enum EmailIngestionStatus {
+  RECEIVED
+  OCR_PROCESSING
+  INVOICE_CREATED
+  IGNORED
+  FAILED
+}
+
+model EmailIngestionLog {
+  id             String               @id @default(cuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  graphMessageId String               @unique
+  fromAddress    String
+  subject        String
+  status         EmailIngestionStatus @default(RECEIVED)
+  errorMessage   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+// ── AI chat widget ───────────────────────────────────────────────────────
+
+model ChatSession {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messages ChatMessage[]
+
+  createdAt DateTime @default(now())
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+model ChatMessage {
+  id            String      @id @default(cuid())
+  chatSessionId String
+  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+  role          ChatRole
+  content       String
+
+  createdAt DateTime @default(now())
+}
