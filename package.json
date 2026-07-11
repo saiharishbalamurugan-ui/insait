@@ -25,6 +25,7 @@
     "msgpackr-extract@3.0.4": true,
     "prisma@6.19.3": true,
     "sharp@0.34.5": true,
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "core-js@3.49.0": true
   }
 }
