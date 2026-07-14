@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, UploadCloud } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { Card } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInvoices } from "@/lib/hooks/use-invoices";
@@ -47,7 +49,13 @@ export default function InvoicesPage() {
               </button>
             ))}
           </div>
-          <div className="text-[12.5px] text-text-faint">{invoices?.length ?? 0} invoices</div>
+          <div className="flex items-center gap-3">
+            <div className="text-[12.5px] text-text-faint">{invoices?.length ?? 0} invoices</div>
+            <Link href="/invoices/upload" className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+              <UploadCloud className="size-3.5" />
+              Upload Invoice
+            </Link>
+          </div>
         </div>
 
         <Card>

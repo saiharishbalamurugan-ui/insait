@@ -112,3 +112,30 @@ export interface ReportItem {
   reviewAction: "APPROVED" | "REJECTED" | "CLARIFICATION_REQUESTED" | null;
   findings: { discrepancyType: DiscrepancyType; severity: string; explanation: string }[];
 }
+
+export interface ExtractedInvoiceData {
+  vendorName: string;
+  invoiceNumber: string;
+  consultantName: string | null;
+  project: string | null;
+  hours: number | null;
+  hourlyRate: number | null;
+  amount: number | null;
+  issueDate: string | null;
+  dueDate: string | null;
+  fileUrl: string;
+}
+
+export interface CreateInvoicePayload {
+  vendorName: string;
+  invoiceNumber: string;
+  consultantName: string | null;
+  project: string | null;
+  hours: number | null;
+  hourlyRate: number | null;
+  amount: number;
+  issueDate: string;
+  dueDate: string | null;
+  fileUrl: string | null;
+  extractedData: unknown;
+}

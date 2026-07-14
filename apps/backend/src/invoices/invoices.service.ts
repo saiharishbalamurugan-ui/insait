@@ -147,4 +147,53 @@ export class InvoicesService {
     const job = await this.auditQueue.enqueueAudit(id);
     return { jobId: job.id, status: "PROCESSING" };
   }
+
+  async create(data: {
+    vendorName: string;
+    invoiceNumber: string;
+    consultantName: string | null;
+    project: string | null;
+    hours: number | null;
+    hourlyRate: number | null;
+    amount: number;
+    issueDate: string;
+    dueDate: string | null;
+    fileUrl: string | null;
+    extractedData: unknown;
+  }) {
+    const hasLineItem = data.hours !== null && data.hourlyRate !== null;
+
+    const invoice = await this.prisma.invoice.create({
+      data: {
+        organizationId: DEMO_ORG_ID,
+        vendorName: data.vendorName,
+        invoiceNumber: data.invoiceNumber,
+        amount: data.amount,
+        issueDate: new Date(data.issueDate),
+        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        source: "MANUAL_UPLOAD",
+        status: "PENDING",
+        consultantName: data.consultantName,
+        project: data.project,
+        hours: data.hours,
+        hourlyRate: data.hourlyRate,
+        fileUrl: data.fileUrl,
+        extractedData: data.extractedData as never,
+        lineItems: hasLineItem
+          ? {
+              create: [
+                {
+                  description: data.project ? `${data.project} — consulting hours` : "Consulting hours",
+                  quantity: data.hours!,
+                  rate: data.hourlyRate!,
+                  amount: data.amount,
+                },
+              ],
+            }
+          : undefined,
+      },
+    });
+
+    return this.findOne(invoice.id);
+  }
 }
