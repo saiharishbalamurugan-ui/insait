@@ -9,7 +9,7 @@ export function useRoster() {
   });
 }
 
-interface RosterUploadResult {
+export interface RosterUploadResult {
   totalRows: number;
   created: number;
   updated: number;

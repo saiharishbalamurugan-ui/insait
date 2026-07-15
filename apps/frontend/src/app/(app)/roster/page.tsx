@@ -1,14 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { UploadCloud, Loader2, Users } from "lucide-react";
+import { UploadCloud, Loader2, Users, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRoster, useUploadRoster } from "@/lib/hooks/use-roster";
+import { useRoster, useUploadRoster, RosterUploadResult } from "@/lib/hooks/use-roster";
 import { money, initials, initialsColor, fmtDateShort } from "@/lib/format";
 import { ApiError } from "@/lib/api-client";
 
@@ -17,10 +17,13 @@ export default function RosterPage() {
   const upload = useUploadRoster();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [lastResult, setLastResult] = useState<RosterUploadResult | null>(null);
 
   function handleFile(file: File) {
+    setLastResult(null);
     upload.mutate(file, {
       onSuccess: (result) => {
+        setLastResult(result);
         if (result.failed > 0) {
           toast.warning(`Loaded ${result.created + result.updated} rows, ${result.failed} couldn't be read.`);
         } else {
@@ -32,6 +35,8 @@ export default function RosterPage() {
       },
     });
   }
+
+  const failedRows = lastResult?.results.filter((r) => !r.ok) ?? [];
 
   return (
     <>
@@ -87,6 +92,40 @@ export default function RosterPage() {
             </div>
           </CardContent>
         </Card>
+
+        {failedRows.length > 0 && (
+          <Card className="mb-[18px] border-warning/40 bg-warning-soft">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-[13px] text-warning">
+                    {failedRows.length} row{failedRows.length > 1 ? "s" : ""} couldn't be loaded
+                  </div>
+                  <div className="text-[12px] text-muted-foreground mt-0.5 mb-2">
+                    Each one is missing a name, approved hours, or an approved rate in the sheet itself — fill in
+                    that cell and re-upload to add them.
+                  </div>
+                  <ul className="text-[12.5px] space-y-1">
+                    {failedRows.map((r, i) => (
+                      <li key={i} className="flex justify-between gap-3">
+                        <span className="font-medium">{r.employeeName}</span>
+                        <span className="text-text-faint">{r.error}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <button
+                  onClick={() => setLastResult(null)}
+                  className="text-text-faint hover:text-foreground shrink-0"
+                  aria-label="Dismiss"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <div className="p-5 pb-3.5 border-b border-border">
