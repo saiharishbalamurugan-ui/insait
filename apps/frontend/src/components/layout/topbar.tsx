@@ -11,7 +11,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
   "/invoices": "Invoices",
   "/inbox": "Email Inbox",
-  "/quickbooks": "QuickBooks",
+  "/roster": "Consultant Roster",
   "/audit": "AI Audit",
   "/reports": "Reports",
   "/settings": "Settings",
@@ -19,6 +19,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 function titleFor(pathname: string) {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  if (pathname === "/invoices/upload") return "Upload Invoice";
   if (pathname.startsWith("/invoices/")) return "Invoice Detail";
   return "Audix";
 }

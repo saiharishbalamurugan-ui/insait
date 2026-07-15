@@ -33,10 +33,16 @@ export class DashboardService {
       else if (label === "Flagged") flagged++;
       else highRisk++;
 
+      const reportOverpay = inv.auditReports[0]?.overpayEstimate;
       const timesheetAmount = inv.matchedTimesheet
         ? Number(inv.matchedTimesheet.hours) * Number(inv.matchedTimesheet.hourlyRate)
         : null;
-      const overpay = timesheetAmount !== null ? Math.max(0, Number(inv.amount) - timesheetAmount) : Number(inv.amount);
+      const overpay =
+        reportOverpay !== null && reportOverpay !== undefined
+          ? Number(reportOverpay)
+          : timesheetAmount !== null
+            ? Math.max(0, Number(inv.amount) - timesheetAmount)
+            : 0;
       if (label !== "Approved") savings += overpay;
     }
 

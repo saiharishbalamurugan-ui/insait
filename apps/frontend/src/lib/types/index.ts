@@ -47,6 +47,8 @@ export type DiscrepancyType =
   | "UNAUTHORIZED_VENDOR"
   | "DATE_MISMATCH"
   | "TAX_ERROR"
+  | "HOLIDAY_OVERBILLING"
+  | "DUE_DATE_MISMATCH"
   | "OTHER";
 
 export interface AuditFinding {
@@ -71,9 +73,11 @@ export interface AuditReport {
 
 export interface InvoiceDetail extends InvoiceListItem {
   fileUrl: string | null;
+  extractedFieldPositions: FieldPosition[] | null;
   lineItems: InvoiceLineItem[];
   matchedTimesheet: MatchedTimesheet | null;
   latestReport: AuditReport | null;
+  checks: CheckResult[] | null;
 }
 
 export interface DashboardStats {
@@ -113,6 +117,43 @@ export interface ReportItem {
   findings: { discrepancyType: DiscrepancyType; severity: string; explanation: string }[];
 }
 
+export type ExtractableField =
+  | "vendorName"
+  | "invoiceNumber"
+  | "consultantName"
+  | "project"
+  | "hours"
+  | "hourlyRate"
+  | "amount"
+  | "issueDate"
+  | "dueDate"
+  | "periodStart"
+  | "periodEnd";
+
+export interface FieldPosition {
+  field: ExtractableField;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type CheckRule = "APPROVED_HOURS" | "BILLING_RATE" | "HOLIDAY_HOURS" | "SUBMISSION_DATE" | "DUE_DATE";
+
+export interface CheckResult {
+  rule: CheckRule;
+  label: string;
+  status: "passed" | "flagged" | "skipped";
+  discrepancyType: DiscrepancyType | null;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+  expectedValue: string | null;
+  actualValue: string | null;
+  explanation: string;
+  relatedFields: ExtractableField[];
+  overpayImpact: number;
+}
+
 export interface ExtractedInvoiceData {
   vendorName: string;
   invoiceNumber: string;
@@ -123,7 +164,13 @@ export interface ExtractedInvoiceData {
   amount: number | null;
   issueDate: string | null;
   dueDate: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  fieldPositions: FieldPosition[];
   fileUrl: string;
+  mimeType: string;
+  uploadedAt: string;
+  checks: CheckResult[];
 }
 
 export interface CreateInvoicePayload {
@@ -136,6 +183,22 @@ export interface CreateInvoicePayload {
   amount: number;
   issueDate: string;
   dueDate: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
   fileUrl: string | null;
+  uploadedAt: string;
   extractedData: unknown;
+}
+
+export interface RosterEntry {
+  id: string;
+  employeeName: string;
+  hours: number;
+  hourlyRate: number;
+  country: string;
+  weekStart: string | null;
+  weekEnd: string | null;
+  project: string | null;
+  managerName: string | null;
+  updatedAt: string;
 }

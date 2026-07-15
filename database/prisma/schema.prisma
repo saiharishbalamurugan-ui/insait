@@ -96,8 +96,9 @@ model Invoice {
   matchedTimesheetId String?    @unique
   matchedTimesheet   Timesheet? @relation(fields: [matchedTimesheetId], references: [id])
 
-  fileUrl       String?
-  extractedData Json?
+  fileUrl                 String?
+  extractedData           Json?
+  extractedFieldPositions Json? // normalized (0-1) bounding boxes per field, from AI extraction — for on-document annotation
 
   lineItems    InvoiceLineItem[]
   auditReports AuditReport[]
@@ -118,16 +119,19 @@ model InvoiceLineItem {
   amount      Decimal @db.Decimal(12, 2)
 }
 
-// ── Timesheets synced from QuickBooks ───────────────────────────────────
+// ── Approved hours roster (manually uploaded until Ceipal is connected) ──
 
 model Timesheet {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  quickbooksId String   @unique
+  sourceId     String?  @unique // external system id, when synced (e.g. future Ceipal id); null for roster uploads
   employeeName String
-  workDate     DateTime
+  workDate     DateTime // anchor date; equals weekStart when known
+  weekStart    DateTime?
+  weekEnd      DateTime?
+  country      String    @default("US")
   hours        Decimal  @db.Decimal(6, 2)
   hourlyRate   Decimal  @db.Decimal(12, 2)
   project      String?
@@ -152,6 +156,8 @@ enum DiscrepancyType {
   UNAUTHORIZED_VENDOR
   DATE_MISMATCH
   TAX_ERROR
+  HOLIDAY_OVERBILLING
+  DUE_DATE_MISMATCH
   OTHER
 }
 
@@ -182,6 +188,7 @@ model AuditReport {
 
   overallRiskScore Int? // 0-100
   summary          String?
+  overpayEstimate  Decimal? @db.Decimal(12, 2) // dollar amount at risk, computed at report time
 
   reviewAction     ReportReviewAction?
   reviewedAt       DateTime?

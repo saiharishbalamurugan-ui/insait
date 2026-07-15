@@ -4,10 +4,10 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { QueueModule } from "./queue/queue.module";
 import { HealthModule } from "./health/health.module";
 import { InvoicesModule } from "./invoices/invoices.module";
-import { TimesheetsModule } from "./timesheets/timesheets.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { ReportsModule } from "./reports/reports.module";
 import { ChatModule } from "./chat/chat.module";
+import { RosterModule } from "./roster/roster.module";
 
 @Module({
   imports: [
@@ -16,10 +16,10 @@ import { ChatModule } from "./chat/chat.module";
     QueueModule,
     HealthModule,
     InvoicesModule,
-    TimesheetsModule,
     DashboardModule,
     ReportsModule,
     ChatModule,
+    RosterModule,
   ],
 })
 export class AppModule {}

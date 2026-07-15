@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, Loader2, Sparkles, AlertTriangle } from "lucide-react";
+import { UploadCloud, FileText, Loader2, Sparkles, AlertTriangle, Users, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
@@ -13,8 +14,9 @@ import { Label } from "@/components/ui/label";
 import { useExtractInvoice, useCreateInvoice } from "@/lib/hooks/use-upload-invoice";
 import { ExtractedInvoiceData } from "@/lib/types";
 import { ApiError } from "@/lib/api-client";
+import { ScanSequence } from "@/components/upload/scan-sequence";
 
-type Stage = "pick" | "extracting" | "review";
+type Stage = "pick" | "extracting" | "scanning" | "review";
 
 export default function UploadInvoicePage() {
   const router = useRouter();
@@ -33,7 +35,7 @@ export default function UploadInvoicePage() {
     extract.mutate(file, {
       onSuccess: (data) => {
         setFields(data);
-        setStage("review");
+        setStage("scanning");
       },
       onError: (err) => {
         const message = err instanceof ApiError ? err.message : "Couldn't read that file — try again.";
@@ -64,7 +66,10 @@ export default function UploadInvoicePage() {
         amount: fields.amount,
         issueDate: fields.issueDate,
         dueDate: fields.dueDate,
+        periodStart: fields.periodStart,
+        periodEnd: fields.periodEnd,
         fileUrl: fields.fileUrl,
+        uploadedAt: fields.uploadedAt,
         extractedData: fields,
       },
       {
@@ -80,55 +85,83 @@ export default function UploadInvoicePage() {
     );
   }
 
+  const flaggedCount = fields?.checks.filter((c) => c.status === "flagged").length ?? 0;
+
   return (
     <>
       <Topbar />
-      <PageContent className="max-w-[720px]">
-        <div className="mb-5">
-          <div className="font-display font-semibold text-[15.5px]">Upload Invoice</div>
-          <div className="text-[12.5px] text-muted-foreground">
-            Upload a PDF or image and Audix will read it — you review before it's saved.
-          </div>
-        </div>
-
+      <PageContent className={stage === "scanning" ? "max-w-[1080px]" : "max-w-[720px]"}>
         {stage === "pick" && (
-          <Card>
-            <CardContent className="p-0">
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragActive(true);
-                }}
-                onDragLeave={() => setDragActive(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragActive(false);
-                  const file = e.dataTransfer.files?.[0];
-                  if (file) handleFile(file);
-                }}
-                className={`m-5 rounded-xl border-2 border-dashed p-14 text-center cursor-pointer transition-colors ${
-                  dragActive ? "border-primary bg-brand-soft" : "border-border-strong hover:bg-secondary"
-                }`}
-              >
-                <div className="size-14 rounded-2xl bg-brand-soft text-primary flex items-center justify-center mx-auto mb-4">
-                  <UploadCloud className="size-6" />
-                </div>
-                <div className="font-semibold text-[14.5px] mb-1">Drop an invoice here, or click to browse</div>
-                <div className="text-[12.5px] text-text-faint">PDF, PNG, JPEG, or WebP — up to 20MB</div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/pdf,image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFile(file);
-                  }}
-                />
+          <>
+            <div className="mb-5">
+              <div className="font-display font-semibold text-[15.5px]">Get Started</div>
+              <div className="text-[12.5px] text-muted-foreground">
+                Two things feed Audix: the hours your consultants actually worked, and the invoices vendors send you
+                for them.
               </div>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-2">
+              <Link href="/roster" className="block">
+                <Card className="h-full transition-colors hover:border-primary cursor-pointer">
+                  <CardContent className="p-6">
+                    <div className="size-11 rounded-2xl bg-brand-soft text-primary flex items-center justify-center mb-4">
+                      <Users className="size-5" />
+                    </div>
+                    <div className="font-semibold text-[14.5px] mb-1 flex items-center gap-1.5">
+                      Upload Hours Sheet <ArrowRight className="size-3.5" />
+                    </div>
+                    <div className="text-[12.5px] text-muted-foreground leading-relaxed">
+                      Load the CSV or Excel sheet of approved hours and rates. Do this first — it's what invoices get
+                      checked against.
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Card className="h-full">
+                <CardContent className="p-6">
+                  <div className="size-11 rounded-2xl bg-indigo-soft text-indigo flex items-center justify-center mb-4">
+                    <FileText className="size-5" />
+                  </div>
+                  <div className="font-semibold text-[14.5px] mb-1">Upload Invoice</div>
+                  <div className="text-[12.5px] text-muted-foreground leading-relaxed mb-4">
+                    Upload a vendor invoice and watch Audix read it, mark it up, and run 5 checks live.
+                  </div>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragActive(true);
+                    }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragActive(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) handleFile(file);
+                    }}
+                    className={`rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
+                      dragActive ? "border-primary bg-brand-soft" : "border-border-strong hover:bg-secondary"
+                    }`}
+                  >
+                    <UploadCloud className="size-5 mx-auto mb-2 text-text-faint" />
+                    <div className="text-[12.5px] font-semibold">Drop a file, or click to browse</div>
+                    <div className="text-[11px] text-text-faint mt-0.5">PDF, PNG, JPEG, WebP — up to 20MB</div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf,image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFile(file);
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </>
         )}
 
         {stage === "extracting" && (
@@ -145,6 +178,16 @@ export default function UploadInvoicePage() {
           </Card>
         )}
 
+        {stage === "scanning" && fields && (
+          <div>
+            <div className="mb-5 text-center">
+              <div className="font-display font-semibold text-[15.5px]">Auditing {fields.invoiceNumber}</div>
+              <div className="text-[12.5px] text-muted-foreground">Running 5 checks against the consultant roster</div>
+            </div>
+            <ScanSequence data={fields} onComplete={() => setStage("review")} />
+          </div>
+        )}
+
         {stage === "review" && fields && (
           <Card>
             <CardContent className="p-5">
@@ -158,6 +201,11 @@ export default function UploadInvoicePage() {
                     <FileText className="size-3" /> {fileName}
                   </div>
                 </div>
+                {flaggedCount > 0 && (
+                  <span className="ml-auto text-[11.5px] font-semibold px-2.5 py-1 rounded-full bg-danger-soft text-danger">
+                    {flaggedCount} check{flaggedCount > 1 ? "s" : ""} flagged
+                  </span>
+                )}
               </div>
 
               <div className="mt-2 mb-4 flex items-start gap-2 rounded-lg bg-warning-soft text-warning px-3 py-2.5 text-[12.5px]">

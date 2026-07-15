@@ -14,6 +14,31 @@ const SUPPORTED_MIME_TYPES: Record<string, string> = {
   "image/webp": "webp",
 };
 
+export const EXTRACTABLE_FIELDS = [
+  "vendorName",
+  "invoiceNumber",
+  "consultantName",
+  "project",
+  "hours",
+  "hourlyRate",
+  "amount",
+  "issueDate",
+  "dueDate",
+  "periodStart",
+  "periodEnd",
+] as const;
+
+export type ExtractableField = (typeof EXTRACTABLE_FIELDS)[number];
+
+export interface FieldPosition {
+  field: ExtractableField;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 const EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
@@ -26,8 +51,42 @@ const EXTRACTION_SCHEMA = {
     amount: { type: ["number", "null"] },
     issueDate: { type: ["string", "null"], description: "ISO 8601 date (YYYY-MM-DD) if present" },
     dueDate: { type: ["string", "null"], description: "ISO 8601 date (YYYY-MM-DD) if present" },
+    periodStart: { type: ["string", "null"], description: "ISO 8601 date — start of the billing/service period, if stated" },
+    periodEnd: { type: ["string", "null"], description: "ISO 8601 date — end of the billing/service period, if stated" },
+    fieldPositions: {
+      type: "array",
+      description:
+        "For each field you actually located on the page, its approximate bounding box, normalized to 0-1 " +
+        "relative to the page width/height (0,0 = top-left). Skip fields you couldn't visually locate.",
+      items: {
+        type: "object",
+        properties: {
+          field: { type: "string", enum: [...EXTRACTABLE_FIELDS] },
+          page: { type: "integer", description: "1-indexed page number" },
+          x: { type: "number" },
+          y: { type: "number" },
+          width: { type: "number" },
+          height: { type: "number" },
+        },
+        required: ["field", "page", "x", "y", "width", "height"],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ["vendorName", "invoiceNumber", "consultantName", "project", "hours", "hourlyRate", "amount", "issueDate", "dueDate"],
+  required: [
+    "vendorName",
+    "invoiceNumber",
+    "consultantName",
+    "project",
+    "hours",
+    "hourlyRate",
+    "amount",
+    "issueDate",
+    "dueDate",
+    "periodStart",
+    "periodEnd",
+    "fieldPositions",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -41,7 +100,11 @@ export interface ExtractedInvoiceData {
   amount: number | null;
   issueDate: string | null;
   dueDate: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  fieldPositions: FieldPosition[];
   fileUrl: string;
+  mimeType: string;
 }
 
 @Injectable()
@@ -73,16 +136,17 @@ export class InvoiceExtractionService {
 
     const response = await client.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 1024,
+      max_tokens: 2048,
       system:
         "You extract structured data from staffing/consulting invoices. Read the attached document and pull out " +
-        "exactly what's visibly present. If a field isn't on the invoice, use null — never guess or invent a value.",
+        "exactly what's visibly present. If a field isn't on the invoice, use null — never guess or invent a value. " +
+        "Also report the approximate on-page location of each field you found, normalized 0-1 relative to page size.",
       messages: [
         {
           role: "user",
           content: [
             documentBlock,
-            { type: "text", text: "Extract the invoice fields from this document." },
+            { type: "text", text: "Extract the invoice fields from this document, with their page positions." },
           ],
         },
       ],
@@ -94,8 +158,8 @@ export class InvoiceExtractionService {
       throw new ServiceUnavailableException("Claude didn't return extracted data — try again.");
     }
 
-    const parsed = JSON.parse(textBlock.text) as Omit<ExtractedInvoiceData, "fileUrl">;
-    return { ...parsed, fileUrl };
+    const parsed = JSON.parse(textBlock.text) as Omit<ExtractedInvoiceData, "fileUrl" | "mimeType">;
+    return { ...parsed, fileUrl, mimeType: file.mimetype };
   }
 
   private async storeFile(file: Express.Multer.File, extension: string): Promise<string> {

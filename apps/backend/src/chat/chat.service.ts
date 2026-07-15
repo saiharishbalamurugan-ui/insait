@@ -56,8 +56,8 @@ export class ChatService {
     const findings = report?.findings.map((f) => `- ${f.discrepancyType}: ${f.explanation}`).join("\n") ?? "none";
 
     return `Invoice ${invoice.invoiceNumber} from ${invoice.vendorName}, consultant ${invoice.consultantName}, ${invoice.hours} hours at $${invoice.hourlyRate}/hr = $${invoice.amount}.
-Matched QuickBooks timesheet: ${invoice.matchedTimesheet ? `${invoice.matchedTimesheet.hours} hours at $${invoice.matchedTimesheet.hourlyRate}/hr` : "none found"}.
-Audit status: ${invoice.status}. Risk score: ${report?.overallRiskScore ?? "not yet audited"} (${riskLabel(report?.overallRiskScore)}).
+Matched approved-hours roster entry: ${invoice.matchedTimesheet ? `${invoice.matchedTimesheet.hours} hours at $${invoice.matchedTimesheet.hourlyRate}/hr` : "none found"}.
+Audit status: ${invoice.status}. Risk score: ${report?.overallRiskScore ?? "not yet audited"} (${riskLabel(report?.overallRiskScore)}). Estimated overpayment: $${report?.overpayEstimate ?? 0}.
 Findings:
 ${findings}`;
   }

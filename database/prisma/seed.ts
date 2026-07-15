@@ -143,9 +143,12 @@ async function main() {
       timesheet = await prisma.timesheet.create({
         data: {
           organizationId: org.id,
-          quickbooksId: `qb-${row.num}`,
+          sourceId: `seed-${row.num}`,
           employeeName: row.consultantName,
           workDate: received,
+          weekStart: received,
+          weekEnd: new Date(received.getTime() + 6 * 86400000),
+          country: "US",
           hours: row.timesheetHours,
           hourlyRate: row.timesheetRate,
           project: row.project,
@@ -198,6 +201,7 @@ async function main() {
           invoiceId: invoice.id,
           status: "COMPLETED",
           overallRiskScore: result.riskScore,
+          overpayEstimate: result.overpay,
           summary: `${riskStatus(result.riskScore)} — ${result.explanation}`,
           completedAt: received,
         },

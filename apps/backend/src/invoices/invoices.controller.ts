@@ -2,6 +2,9 @@ import { BadRequestException, Body, Controller, Get, Param, Post, Query, Uploade
 import { FileInterceptor } from "@nestjs/platform-express";
 import { InvoicesService } from "./invoices.service";
 import { InvoiceExtractionService } from "./invoice-extraction.service";
+import { InvoiceChecksService } from "./invoice-checks.service";
+
+const DEMO_ORG_ID = "seed-org-1";
 
 interface CreateInvoiceBody {
   vendorName: string;
@@ -13,7 +16,10 @@ interface CreateInvoiceBody {
   amount: number;
   issueDate: string;
   dueDate: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
   fileUrl: string | null;
+  uploadedAt: string;
   extractedData: unknown;
 }
 
@@ -22,13 +28,17 @@ export class InvoicesController {
   constructor(
     private readonly invoicesService: InvoicesService,
     private readonly extractionService: InvoiceExtractionService,
+    private readonly checksService: InvoiceChecksService,
   ) {}
 
   @Post("extract")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }))
-  extract(@UploadedFile() file?: Express.Multer.File) {
+  async extract(@UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException("No file uploaded");
-    return this.extractionService.extract(file);
+    const uploadedAt = new Date();
+    const extracted = await this.extractionService.extract(file);
+    const checks = await this.checksService.runChecks(extracted, DEMO_ORG_ID, uploadedAt);
+    return { ...extracted, uploadedAt: uploadedAt.toISOString(), checks };
   }
 
   @Get()
@@ -38,7 +48,7 @@ export class InvoicesController {
 
   @Post()
   create(@Body() body: CreateInvoiceBody) {
-    return this.invoicesService.create(body);
+    return this.invoicesService.create(body, this.checksService);
   }
 
   @Get(":id")

@@ -33,7 +33,12 @@ export class ReportsService {
         const timesheetAmount = inv.matchedTimesheet
           ? Number(inv.matchedTimesheet.hours) * Number(inv.matchedTimesheet.hourlyRate)
           : null;
-        const overpay = timesheetAmount !== null ? Math.max(0, Number(inv.amount) - timesheetAmount) : Number(inv.amount);
+        const overpay =
+          report.overpayEstimate !== null && report.overpayEstimate !== undefined
+            ? Number(report.overpayEstimate)
+            : timesheetAmount !== null
+              ? Math.max(0, Number(inv.amount) - timesheetAmount)
+              : 0;
 
         return {
           invoiceId: inv.id,

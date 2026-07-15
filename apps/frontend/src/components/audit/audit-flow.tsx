@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Wand2, Download, Sparkles, X, Mail } from "lucide-react";
+import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -151,11 +151,21 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
   const reportAction = useReportAction();
   const report = invoice.latestReport;
   const ts = invoice.matchedTimesheet;
+  const checks = invoice.checks;
   const invoiceHours = invoice.hours ?? 0;
   const invoiceRate = invoice.hourlyRate ?? 0;
   const tsAmount = ts ? ts.hours * ts.hourlyRate : null;
   const isClean = !report?.findings.length;
   const action = report?.reviewAction ?? null;
+
+  const hoursCheck = checks?.find((c) => c.rule === "APPROVED_HOURS");
+  const rateCheck = checks?.find((c) => c.rule === "BILLING_RATE");
+  const rosterHoursMatch = hoursCheck?.expectedValue?.match(/[\d.]+/)?.[0];
+  const rosterRateMatch = rateCheck?.expectedValue?.match(/[\d.]+/)?.[0];
+  const rosterHours = checks && rosterHoursMatch ? Number(rosterHoursMatch) : null;
+  const rosterRate = checks && rosterRateMatch ? Number(rosterRateMatch) : invoiceRate;
+  const rosterAmount = rosterHours !== null ? rosterHours * rosterRate : null;
+  const hasRosterEntry = checks ? hoursCheck?.discrepancyType !== "MISSING_TIMESHEET" : !!ts;
 
   const extractedFields: [string, string][] = [
     ["Vendor", invoice.vendorName],
@@ -192,25 +202,59 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
 
         <Card>
           <CardContent className="p-5">
-            <div className="font-display font-semibold text-[15.5px]">QuickBooks Timesheet Match</div>
-            <div className="text-[12.5px] text-muted-foreground mb-1">
-              Approved hours for {invoice.consultantName}
-            </div>
-            {ts ? (
+            {checks ? (
               <>
-                <Row label="Employee" value={ts.employeeName} />
-                <Row label="Project" value={ts.project ?? "—"} />
-                <Row label="Manager Approval">
-                  <StatusBadge status="Approved" />
-                  <span className="ml-1.5 text-[13px]">{ts.managerName}</span>
-                </Row>
-                <Row label="Approved Hours" value={`${ts.hours} hrs`} mono />
-                <Row label="Approved Rate" value={`$${ts.hourlyRate}/hr`} mono />
+                <div className="font-display font-semibold text-[15.5px]">Consultant Roster Checks</div>
+                <div className="text-[12.5px] text-muted-foreground mb-2">
+                  5 automated checks against the approved hours sheet
+                </div>
+                <div className="flex flex-col gap-1.5 mt-2">
+                  {checks.map((c) => (
+                    <div key={c.rule} className="flex items-start gap-2 py-1">
+                      <div className="shrink-0 mt-0.5">
+                        {c.status === "flagged" ? (
+                          <div className="size-4 rounded-full bg-danger text-white flex items-center justify-center">
+                            <X className="size-2.5" strokeWidth={3} />
+                          </div>
+                        ) : c.status === "skipped" ? (
+                          <MinusCircle className="size-4 text-text-faint" />
+                        ) : (
+                          <div className="size-4 rounded-full bg-success text-white flex items-center justify-center">
+                            <Check className="size-2.5" strokeWidth={3} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[12.5px]">{c.label}</div>
+                        <div className="text-[11.5px] text-muted-foreground leading-snug">{c.explanation}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </>
             ) : (
-              <div className="mt-3 flex items-center gap-2 p-3 rounded-lg bg-danger-soft text-danger text-[13px] font-medium">
-                <X className="size-4" /> No matching timesheet found in QuickBooks
-              </div>
+              <>
+                <div className="font-display font-semibold text-[15.5px]">QuickBooks Timesheet Match</div>
+                <div className="text-[12.5px] text-muted-foreground mb-1">
+                  Approved hours for {invoice.consultantName}
+                </div>
+                {ts ? (
+                  <>
+                    <Row label="Employee" value={ts.employeeName} />
+                    <Row label="Project" value={ts.project ?? "—"} />
+                    <Row label="Manager Approval">
+                      <StatusBadge status="Approved" />
+                      <span className="ml-1.5 text-[13px]">{ts.managerName}</span>
+                    </Row>
+                    <Row label="Approved Hours" value={`${ts.hours} hrs`} mono />
+                    <Row label="Approved Rate" value={`$${ts.hourlyRate}/hr`} mono />
+                  </>
+                ) : (
+                  <div className="mt-3 flex items-center gap-2 p-3 rounded-lg bg-danger-soft text-danger text-[13px] font-medium">
+                    <X className="size-4" /> No matching timesheet found in QuickBooks
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -219,7 +263,9 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
       <Card className="overflow-hidden">
         <div className="p-5 pb-3.5">
           <div className="font-display font-semibold text-[15.5px]">Reconciliation</div>
-          <div className="text-[12.5px] text-muted-foreground">Invoice vs. approved QuickBooks record</div>
+          <div className="text-[12.5px] text-muted-foreground">
+            Invoice vs. approved {checks ? "roster" : "QuickBooks"} record
+          </div>
         </div>
         <div className="flex border-t border-b border-border">
           <div className="flex-1 p-5 bg-surface-2">
@@ -241,18 +287,23 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
           <div className="w-0 border-l-2 border-dashed border-border-strong" />
           <div className="flex-1 p-5 bg-surface-2">
             <div className="text-[10.5px] uppercase tracking-wide text-text-faint font-bold mb-2.5">
-              QuickBooks Hours
+              {checks ? "Approved Hours" : "QuickBooks Hours"}
             </div>
             <div className="font-mono text-[26px] font-semibold">
-              {ts ? ts.hours : 0} <span className="text-[14px] font-medium text-muted-foreground">hrs</span>
+              {checks ? (hasRosterEntry ? (rosterHours ?? invoiceHours) : 0) : ts ? ts.hours : 0}{" "}
+              <span className="text-[14px] font-medium text-muted-foreground">hrs</span>
             </div>
             <div className="flex justify-between text-[12.5px] pt-2 mt-2 border-t border-dashed border-border">
               <span className="text-muted-foreground">Rate</span>
-              <span className="font-mono">${ts ? ts.hourlyRate : 0}/hr</span>
+              <span className="font-mono">
+                ${checks ? (hasRosterEntry ? rosterRate : 0) : ts ? ts.hourlyRate : 0}/hr
+              </span>
             </div>
             <div className="flex justify-between text-[12.5px] pt-1.5">
               <span className="text-muted-foreground">Amount</span>
-              <span className="font-mono">{money(tsAmount ?? 0)}</span>
+              <span className="font-mono">
+                {money(checks ? (hasRosterEntry ? (rosterAmount ?? 0) : 0) : (tsAmount ?? 0))}
+              </span>
             </div>
           </div>
         </div>

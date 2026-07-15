@@ -1,9 +1,19 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiAuditQueueService } from "../queue/ai-audit-queue.service";
+import { InvoiceChecksService, CheckResult } from "./invoice-checks.service";
 import { matchConfidence, riskLabel } from "../common/risk.util";
 
 const DEMO_ORG_ID = "seed-org-1";
+
+const SEVERITY_WEIGHT: Record<string, number> = { CRITICAL: 40, HIGH: 25, MEDIUM: 15, LOW: 8 };
+
+function riskScoreFromChecks(checks: CheckResult[]): number {
+  const flagged = checks.filter((c) => c.status === "flagged");
+  if (flagged.length === 0) return Math.max(1, Math.round(Math.random() * 4));
+  const score = flagged.reduce((sum, c) => sum + (SEVERITY_WEIGHT[c.severity ?? "LOW"] ?? 8), 0);
+  return Math.min(99, score);
+}
 
 @Injectable()
 export class InvoicesService {
@@ -36,9 +46,11 @@ export class InvoicesService {
       : null;
     const overpay =
       invoice.status === "AUDITED"
-        ? timesheetAmount !== null
-          ? Math.max(0, invoiceAmount - timesheetAmount)
-          : invoiceAmount
+        ? latestReport?.overpayEstimate !== null && latestReport?.overpayEstimate !== undefined
+          ? Number(latestReport.overpayEstimate)
+          : timesheetAmount !== null
+            ? Math.max(0, invoiceAmount - timesheetAmount)
+            : 0
         : 0;
 
     return {
@@ -96,9 +108,12 @@ export class InvoicesService {
     if (!invoice) throw new NotFoundException("Invoice not found");
 
     const latestReport = invoice.auditReports[0] ?? null;
+    const extracted = invoice.extractedData as { checks?: CheckResult[] } | null;
     return {
       ...this.serialize(invoice as any),
       fileUrl: invoice.fileUrl,
+      extractedFieldPositions: invoice.extractedFieldPositions,
+      checks: Array.isArray(extracted?.checks) ? extracted.checks : null,
       lineItems: invoice.lineItems.map((li) => ({
         id: li.id,
         description: li.description,
@@ -148,20 +163,32 @@ export class InvoicesService {
     return { jobId: job.id, status: "PROCESSING" };
   }
 
-  async create(data: {
-    vendorName: string;
-    invoiceNumber: string;
-    consultantName: string | null;
-    project: string | null;
-    hours: number | null;
-    hourlyRate: number | null;
-    amount: number;
-    issueDate: string;
-    dueDate: string | null;
-    fileUrl: string | null;
-    extractedData: unknown;
-  }) {
+  async create(
+    data: {
+      vendorName: string;
+      invoiceNumber: string;
+      consultantName: string | null;
+      project: string | null;
+      hours: number | null;
+      hourlyRate: number | null;
+      amount: number;
+      issueDate: string;
+      dueDate: string | null;
+      periodStart: string | null;
+      periodEnd: string | null;
+      fileUrl: string | null;
+      uploadedAt: string;
+      extractedData: unknown;
+    },
+    checksService: InvoiceChecksService,
+  ) {
     const hasLineItem = data.hours !== null && data.hourlyRate !== null;
+    const uploadedAt = data.uploadedAt ? new Date(data.uploadedAt) : new Date();
+
+    const fieldPositions =
+      data.extractedData && typeof data.extractedData === "object" && "fieldPositions" in data.extractedData
+        ? (data.extractedData as { fieldPositions: unknown }).fieldPositions
+        : null;
 
     const invoice = await this.prisma.invoice.create({
       data: {
@@ -172,13 +199,14 @@ export class InvoicesService {
         issueDate: new Date(data.issueDate),
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         source: "MANUAL_UPLOAD",
-        status: "PENDING",
+        status: "AUDITED",
         consultantName: data.consultantName,
         project: data.project,
         hours: data.hours,
         hourlyRate: data.hourlyRate,
         fileUrl: data.fileUrl,
         extractedData: data.extractedData as never,
+        extractedFieldPositions: fieldPositions as never,
         lineItems: hasLineItem
           ? {
               create: [
@@ -191,6 +219,55 @@ export class InvoicesService {
               ],
             }
           : undefined,
+      },
+    });
+
+    const checks = await checksService.runChecks(
+      {
+        vendorName: data.vendorName,
+        invoiceNumber: data.invoiceNumber,
+        consultantName: data.consultantName,
+        project: data.project,
+        hours: data.hours,
+        hourlyRate: data.hourlyRate,
+        amount: data.amount,
+        issueDate: data.issueDate,
+        dueDate: data.dueDate,
+        periodStart: data.periodStart,
+        periodEnd: data.periodEnd,
+        fieldPositions: [],
+        fileUrl: data.fileUrl ?? "",
+        mimeType: "",
+      },
+      DEMO_ORG_ID,
+      uploadedAt,
+    );
+
+    const flaggedChecks = checks.filter((c) => c.status === "flagged");
+    const riskScore = riskScoreFromChecks(checks);
+    const statusLabel = riskLabel(riskScore);
+    const overpayEstimate = flaggedChecks.reduce((sum, c) => sum + c.overpayImpact, 0);
+
+    await this.prisma.auditReport.create({
+      data: {
+        invoiceId: invoice.id,
+        status: "COMPLETED",
+        overallRiskScore: riskScore,
+        overpayEstimate,
+        summary:
+          flaggedChecks.length === 0
+            ? `${statusLabel} — all 5 checks passed (Approved Hours, Billing Rate, Holiday Hours, Submission Date, Due Date).`
+            : `${statusLabel} — ${flaggedChecks.length} of 5 checks flagged: ${flaggedChecks.map((c) => c.label).join(", ")}.`,
+        completedAt: new Date(),
+        findings: {
+          create: flaggedChecks.map((c) => ({
+            discrepancyType: c.discrepancyType!,
+            severity: c.severity!,
+            explanation: c.explanation,
+            expectedValue: c.expectedValue,
+            actualValue: c.actualValue,
+          })),
+        },
       },
     });
 

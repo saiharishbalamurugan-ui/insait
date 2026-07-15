@@ -247,6 +247,7 @@ async function processAiAuditJob(job: Job<AiAuditJobData>) {
       invoiceId: invoice.id,
       status: "COMPLETED",
       overallRiskScore: result.riskScore,
+      overpayEstimate: result.overpay,
       summary: `${statusLabel} — ${result.explanation}`,
       completedAt: new Date(),
     },
