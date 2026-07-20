@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, X, MinusCircle, Loader2 } from "lucide-react";
+import { Check, X, MinusCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { CheckResult, ExtractedInvoiceData } from "@/lib/types";
 import { API_BASE_URL } from "@/lib/api-client";
 import { DocumentAnnotator, AnnotationBox } from "./document-annotator";
@@ -31,7 +31,14 @@ export function ScanSequence({
   const boxes: AnnotationBox[] = [];
   checks.forEach((check, i) => {
     if (i > stepIdx) return;
-    const tone = i === stepIdx ? "active" : check.status === "flagged" ? "flagged" : "passed";
+    const tone =
+      i === stepIdx
+        ? "active"
+        : check.status === "flagged"
+          ? "flagged"
+          : check.status === "warning"
+            ? "warning"
+            : "passed";
     for (const field of check.relatedFields) {
       const existing = boxes.find((b) => b.field === field);
       if (!existing || tone !== "active") {
@@ -67,6 +74,10 @@ function StepRow({ check, state }: { check: CheckResult; state: "done" | "active
     ) : check.status === "flagged" ? (
       <div className="size-5 rounded-full bg-danger text-white flex items-center justify-center">
         <X className="size-3" strokeWidth={3} />
+      </div>
+    ) : check.status === "warning" ? (
+      <div className="size-5 rounded-full bg-warning text-white flex items-center justify-center">
+        <AlertTriangle className="size-3" strokeWidth={2.5} />
       </div>
     ) : check.status === "skipped" ? (
       <div className="size-5 rounded-full bg-secondary text-text-faint flex items-center justify-center">

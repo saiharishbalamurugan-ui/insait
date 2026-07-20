@@ -19,9 +19,32 @@ interface CreateInvoiceBody {
   dueDate: string | null;
   periodStart: string | null;
   periodEnd: string | null;
+  paymentTermsLabel: string | null;
+  paymentTermsDays: number | null;
   fileUrl: string | null;
   uploadedAt: string;
+  receivedDate: string;
   extractedData: unknown;
+}
+
+interface RecomputeChecksBody {
+  vendorName: string;
+  invoiceNumber: string;
+  consultantName: string | null;
+  project: string | null;
+  hours: number | null;
+  hourlyRate: number | null;
+  amount: number | null;
+  issueDate: string | null;
+  dueDate: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  paymentTermsLabel: string | null;
+  paymentTermsDays: number | null;
+  fieldPositions: unknown;
+  fileUrl: string;
+  mimeType: string;
+  receivedDate: string;
 }
 
 @Controller("invoices")
@@ -35,13 +58,45 @@ export class InvoicesController {
 
   @Post("extract")
   @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 20 * 1024 * 1024 } }))
-  async extract(@UploadedFile() file?: Express.Multer.File) {
+  async extract(@UploadedFile() file?: Express.Multer.File, @Body("receivedDate") receivedDateStr?: string) {
     if (!file) throw new BadRequestException("No file uploaded");
+    if (!receivedDateStr) throw new BadRequestException("receivedDate is required");
+    const receivedDate = new Date(receivedDateStr);
     const uploadedAt = new Date();
     const currentMonth = await this.monthsService.currentLabel();
     const extracted = await this.extractionService.extract(file);
-    const checks = await this.checksService.runChecks(extracted, DEMO_ORG_ID, uploadedAt, currentMonth);
-    return { ...extracted, uploadedAt: uploadedAt.toISOString(), checks };
+    const checks = await this.checksService.runChecks(extracted, DEMO_ORG_ID, receivedDate, currentMonth);
+    return { ...extracted, uploadedAt: uploadedAt.toISOString(), receivedDate: receivedDate.toISOString(), checks };
+  }
+
+  @Post("recompute-checks")
+  async recomputeChecks(@Body() body: RecomputeChecksBody) {
+    if (!body.receivedDate) throw new BadRequestException("receivedDate is required");
+    const currentMonth = await this.monthsService.currentLabel();
+    const checks = await this.checksService.runChecks(
+      {
+        vendorName: body.vendorName,
+        invoiceNumber: body.invoiceNumber,
+        consultantName: body.consultantName,
+        project: body.project,
+        hours: body.hours,
+        hourlyRate: body.hourlyRate,
+        amount: body.amount,
+        issueDate: body.issueDate,
+        dueDate: body.dueDate,
+        periodStart: body.periodStart,
+        periodEnd: body.periodEnd,
+        paymentTermsLabel: body.paymentTermsLabel,
+        paymentTermsDays: body.paymentTermsDays,
+        fieldPositions: (body.fieldPositions as never) ?? [],
+        fileUrl: body.fileUrl,
+        mimeType: body.mimeType,
+      },
+      DEMO_ORG_ID,
+      new Date(body.receivedDate),
+      currentMonth,
+    );
+    return { checks };
   }
 
   @Get()

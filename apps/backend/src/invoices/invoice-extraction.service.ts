@@ -26,6 +26,7 @@ export const EXTRACTABLE_FIELDS = [
   "dueDate",
   "periodStart",
   "periodEnd",
+  "paymentTerms",
 ] as const;
 
 export type ExtractableField = (typeof EXTRACTABLE_FIELDS)[number];
@@ -53,6 +54,14 @@ const EXTRACTION_SCHEMA = {
     dueDate: { type: ["string", "null"], description: "ISO 8601 date (YYYY-MM-DD) if present" },
     periodStart: { type: ["string", "null"], description: "ISO 8601 date — start of the billing/service period, if stated" },
     periodEnd: { type: ["string", "null"], description: "ISO 8601 date — end of the billing/service period, if stated" },
+    paymentTermsLabel: {
+      type: ["string", "null"],
+      description: "Payment terms as stated or clearly implied on the invoice, e.g. 'Net 30', 'Net 45', 'Due on Receipt'. Null if not identifiable.",
+    },
+    paymentTermsDays: {
+      type: ["number", "null"],
+      description: "The same payment terms as a number of days from receipt (0 for Due on Receipt, 45 for Net 45, etc). Null if paymentTermsLabel is null.",
+    },
     fieldPositions: {
       type: "array",
       description:
@@ -85,6 +94,8 @@ const EXTRACTION_SCHEMA = {
     "dueDate",
     "periodStart",
     "periodEnd",
+    "paymentTermsLabel",
+    "paymentTermsDays",
     "fieldPositions",
   ],
   additionalProperties: false,
@@ -102,6 +113,8 @@ export interface ExtractedInvoiceData {
   dueDate: string | null;
   periodStart: string | null;
   periodEnd: string | null;
+  paymentTermsLabel: string | null;
+  paymentTermsDays: number | null;
   fieldPositions: FieldPosition[];
   fileUrl: string;
   mimeType: string;
@@ -140,6 +153,10 @@ export class InvoiceExtractionService {
       system:
         "You extract structured data from staffing/consulting invoices. Read the attached document and pull out " +
         "exactly what's visibly present. If a field isn't on the invoice, use null — never guess or invent a value. " +
+        "Also identify the invoice's payment terms if stated or clearly implied anywhere on the document (e.g. " +
+        "'Net 30', 'Payment due within 45 days', 'Due on Receipt') — report both the label as printed/implied and " +
+        "the equivalent number of days from receipt. If no payment terms appear anywhere, leave both null rather " +
+        "than assuming a default. " +
         "Also report the approximate on-page location of each field you found, normalized 0-1 relative to page size.",
       messages: [
         {

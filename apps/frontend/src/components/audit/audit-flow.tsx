@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle, Lock } from "lucide-react";
+import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle, Lock, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -209,7 +209,7 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
               <>
                 <div className="font-display font-semibold text-[15.5px]">Consultant Roster Checks</div>
                 <div className="text-[12.5px] text-muted-foreground mb-2">
-                  5 automated checks against the approved hours sheet
+                  {checks.length} automated checks against the approved hours sheet
                 </div>
                 <div className="flex flex-col gap-1.5 mt-2">
                   {checks.map((c) => (
@@ -218,6 +218,10 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
                         {c.status === "flagged" ? (
                           <div className="size-4 rounded-full bg-danger text-white flex items-center justify-center">
                             <X className="size-2.5" strokeWidth={3} />
+                          </div>
+                        ) : c.status === "warning" ? (
+                          <div className="size-4 rounded-full bg-warning text-white flex items-center justify-center">
+                            <AlertTriangle className="size-2.5" strokeWidth={2.5} />
                           </div>
                         ) : c.status === "skipped" ? (
                           <MinusCircle className="size-4 text-text-faint" />

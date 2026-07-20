@@ -10,9 +10,9 @@ const DEMO_ORG_ID = "seed-org-1";
 const SEVERITY_WEIGHT: Record<string, number> = { CRITICAL: 40, HIGH: 25, MEDIUM: 15, LOW: 8 };
 
 function riskScoreFromChecks(checks: CheckResult[]): number {
-  const flagged = checks.filter((c) => c.status === "flagged");
-  if (flagged.length === 0) return Math.max(1, Math.round(Math.random() * 4));
-  const score = flagged.reduce((sum, c) => sum + (SEVERITY_WEIGHT[c.severity ?? "LOW"] ?? 8), 0);
+  const issues = checks.filter((c) => c.status === "flagged" || c.status === "warning");
+  if (issues.length === 0) return Math.max(1, Math.round(Math.random() * 4));
+  const score = issues.reduce((sum, c) => sum + (SEVERITY_WEIGHT[c.severity ?? "LOW"] ?? 8), 0);
   return Math.min(99, score);
 }
 
@@ -189,14 +189,17 @@ export class InvoicesService {
       dueDate: string | null;
       periodStart: string | null;
       periodEnd: string | null;
+      paymentTermsLabel: string | null;
+      paymentTermsDays: number | null;
       fileUrl: string | null;
       uploadedAt: string;
+      receivedDate: string;
       extractedData: unknown;
     },
     checksService: InvoiceChecksService,
   ) {
     const hasLineItem = data.hours !== null && data.hourlyRate !== null;
-    const uploadedAt = data.uploadedAt ? new Date(data.uploadedAt) : new Date();
+    const receivedDate = data.receivedDate ? new Date(data.receivedDate) : new Date(data.uploadedAt);
     const currentMonth = await this.monthsService.currentLabel();
 
     const fieldPositions =
@@ -250,19 +253,22 @@ export class InvoicesService {
         dueDate: data.dueDate,
         periodStart: data.periodStart,
         periodEnd: data.periodEnd,
+        paymentTermsLabel: data.paymentTermsLabel,
+        paymentTermsDays: data.paymentTermsDays,
         fieldPositions: [],
         fileUrl: data.fileUrl ?? "",
         mimeType: "",
       },
       DEMO_ORG_ID,
-      uploadedAt,
+      receivedDate,
       currentMonth,
+      invoice.id,
     );
 
-    const flaggedChecks = checks.filter((c) => c.status === "flagged");
+    const issueChecks = checks.filter((c) => c.status === "flagged" || c.status === "warning");
     const riskScore = riskScoreFromChecks(checks);
     const statusLabel = riskLabel(riskScore);
-    const overpayEstimate = flaggedChecks.reduce((sum, c) => sum + c.overpayImpact, 0);
+    const overpayEstimate = issueChecks.reduce((sum, c) => sum + c.overpayImpact, 0);
 
     await this.prisma.auditReport.create({
       data: {
@@ -271,12 +277,12 @@ export class InvoicesService {
         overallRiskScore: riskScore,
         overpayEstimate,
         summary:
-          flaggedChecks.length === 0
-            ? `${statusLabel} — all 5 checks passed (Approved Hours, Billing Rate, Holiday Hours, Submission Date, Due Date).`
-            : `${statusLabel} — ${flaggedChecks.length} of 5 checks flagged: ${flaggedChecks.map((c) => c.label).join(", ")}.`,
+          issueChecks.length === 0
+            ? `${statusLabel} — all ${checks.length} checks passed.`
+            : `${statusLabel} — ${issueChecks.length} of ${checks.length} checks need attention: ${issueChecks.map((c) => c.label).join(", ")}.`,
         completedAt: new Date(),
         findings: {
-          create: flaggedChecks.map((c) => ({
+          create: issueChecks.map((c) => ({
             discrepancyType: c.discrepancyType!,
             severity: c.severity!,
             explanation: c.explanation,

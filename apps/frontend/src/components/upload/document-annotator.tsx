@@ -14,13 +14,14 @@ const PAGE_WIDTH = 620;
 
 export interface AnnotationBox {
   field: ExtractableField;
-  tone: "active" | "passed" | "flagged";
+  tone: "active" | "passed" | "warning" | "flagged";
   label?: string;
 }
 
 const TONE_STYLES: Record<AnnotationBox["tone"], string> = {
   active: "border-indigo shadow-[0_0_0_3px_var(--indigo-soft)]",
   passed: "border-success shadow-[0_0_0_3px_var(--success-soft)]",
+  warning: "border-warning shadow-[0_0_0_3px_var(--warning-soft)]",
   flagged: "border-danger shadow-[0_0_0_3px_var(--danger-soft)]",
 };
 
@@ -91,7 +92,7 @@ export function DocumentAnnotator({
                 {tone !== "active" && (
                   <div
                     className={`absolute -top-2.5 -right-2.5 size-4 rounded-full flex items-center justify-center text-white ${
-                      tone === "passed" ? "bg-success" : "bg-danger"
+                      tone === "passed" ? "bg-success" : tone === "warning" ? "bg-warning" : "bg-danger"
                     }`}
                   >
                     {tone === "passed" ? <Check className="size-2.5" strokeWidth={3} /> : <X className="size-2.5" strokeWidth={3} />}
@@ -102,9 +103,11 @@ export function DocumentAnnotator({
                     className={`absolute -bottom-6 left-0 text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap ${
                       tone === "passed"
                         ? "bg-success text-white"
-                        : tone === "flagged"
-                          ? "bg-danger text-white"
-                          : "bg-indigo text-white"
+                        : tone === "warning"
+                          ? "bg-warning text-white"
+                          : tone === "flagged"
+                            ? "bg-danger text-white"
+                            : "bg-indigo text-white"
                     }`}
                   >
                     {label}

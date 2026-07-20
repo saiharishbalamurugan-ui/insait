@@ -11,25 +11,33 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useExtractInvoice, useCreateInvoice } from "@/lib/hooks/use-upload-invoice";
+import { useExtractInvoice, useCreateInvoice, useRecomputeChecks } from "@/lib/hooks/use-upload-invoice";
 import { ExtractedInvoiceData } from "@/lib/types";
 import { ApiError } from "@/lib/api-client";
 import { ScanSequence } from "@/components/upload/scan-sequence";
 import { useMonthContext } from "@/lib/hooks/use-month";
+import { PaymentTermsPicker } from "@/components/upload/payment-terms-picker";
 
-type Stage = "pick" | "extracting" | "scanning" | "review";
+type Stage = "pick" | "received-date" | "extracting" | "terms-select" | "scanning" | "review";
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export default function UploadInvoicePage() {
   const router = useRouter();
   const { isViewingCurrent, currentMonthLabel } = useMonthContext();
   const [stage, setStage] = useState<Stage>("pick");
   const [fileName, setFileName] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [receivedDate, setReceivedDate] = useState(todayISO());
   const [fields, setFields] = useState<ExtractedInvoiceData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
 
   const extract = useExtractInvoice();
   const create = useCreateInvoice();
+  const recomputeChecks = useRecomputeChecks();
 
   if (currentMonthLabel && !isViewingCurrent) {
     return (
@@ -55,18 +63,43 @@ export default function UploadInvoicePage() {
 
   function handleFile(file: File) {
     setFileName(file.name);
+    setPendingFile(file);
+    setStage("received-date");
+  }
+
+  function startExtraction() {
+    if (!pendingFile) return;
     setStage("extracting");
-    extract.mutate(file, {
-      onSuccess: (data) => {
-        setFields(data);
-        setStage("scanning");
+    extract.mutate(
+      { file: pendingFile, receivedDate },
+      {
+        onSuccess: (data) => {
+          setFields(data);
+          setStage(data.paymentTermsDays === null ? "terms-select" : "scanning");
+        },
+        onError: (err) => {
+          const message = err instanceof ApiError ? err.message : "Couldn't read that file — try again.";
+          toast.error(message);
+          setStage("pick");
+        },
       },
-      onError: (err) => {
-        const message = err instanceof ApiError ? err.message : "Couldn't read that file — try again.";
-        toast.error(message);
-        setStage("pick");
+    );
+  }
+
+  function submitPaymentTerms(label: string, days: number) {
+    if (!fields) return;
+    recomputeChecks.mutate(
+      { ...fields, paymentTermsLabel: label, paymentTermsDays: days, receivedDate },
+      {
+        onSuccess: ({ checks }) => {
+          setFields((f) => (f ? { ...f, paymentTermsLabel: label, paymentTermsDays: days, checks } : f));
+          setStage("scanning");
+        },
+        onError: (err) => {
+          toast.error(err instanceof ApiError ? err.message : "Couldn't apply those payment terms — try again.");
+        },
       },
-    });
+    );
   }
 
   function updateField<K extends keyof ExtractedInvoiceData>(key: K, value: ExtractedInvoiceData[K]) {
@@ -92,8 +125,11 @@ export default function UploadInvoicePage() {
         dueDate: fields.dueDate,
         periodStart: fields.periodStart,
         periodEnd: fields.periodEnd,
+        paymentTermsLabel: fields.paymentTermsLabel,
+        paymentTermsDays: fields.paymentTermsDays,
         fileUrl: fields.fileUrl,
         uploadedAt: fields.uploadedAt,
+        receivedDate: fields.receivedDate,
         extractedData: fields,
       },
       {
@@ -109,7 +145,7 @@ export default function UploadInvoicePage() {
     );
   }
 
-  const flaggedCount = fields?.checks.filter((c) => c.status === "flagged").length ?? 0;
+  const flaggedCount = fields?.checks.filter((c) => c.status === "flagged" || c.status === "warning").length ?? 0;
 
   return (
     <>
@@ -149,7 +185,7 @@ export default function UploadInvoicePage() {
                   </div>
                   <div className="font-semibold text-[14.5px] mb-1">Upload Invoice</div>
                   <div className="text-[12.5px] text-muted-foreground leading-relaxed mb-4">
-                    Upload a vendor invoice and watch Audix read it, mark it up, and run 5 checks live.
+                    Upload a vendor invoice and watch Audix read it, mark it up, and run 7 checks live.
                   </div>
                   <div
                     onClick={() => fileInputRef.current?.click()}
@@ -188,6 +224,39 @@ export default function UploadInvoicePage() {
           </>
         )}
 
+        {stage === "received-date" && (
+          <Card>
+            <CardContent className="text-center py-12 px-6">
+              <div className="size-14 rounded-2xl bg-brand-soft text-primary flex items-center justify-center mx-auto mb-4">
+                <FileText className="size-6" />
+              </div>
+              <div className="font-display font-semibold text-[15px] mb-1">When did this email arrive?</div>
+              <div className="text-[12.5px] text-text-faint max-w-sm mx-auto mb-5">
+                Audix uses the date {fileName} actually landed in your inbox — not today's date — to validate the
+                due date against the vendor's payment terms.
+              </div>
+              <div className="max-w-[220px] mx-auto text-left mb-5">
+                <Label className="text-[11.5px] text-text-faint font-semibold mb-1.5 block">Email received date *</Label>
+                <Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} max={todayISO()} />
+              </div>
+              <div className="flex gap-2 justify-center">
+                <Button className="gap-1.5" disabled={!receivedDate} onClick={startExtraction}>
+                  Continue
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setStage("pick");
+                    setPendingFile(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {stage === "extracting" && (
           <Card>
             <CardContent className="text-center py-16 px-6">
@@ -202,11 +271,19 @@ export default function UploadInvoicePage() {
           </Card>
         )}
 
+        {stage === "terms-select" && fields && (
+          <PaymentTermsPicker
+            fileName={fileName}
+            isPending={recomputeChecks.isPending}
+            onSubmit={submitPaymentTerms}
+          />
+        )}
+
         {stage === "scanning" && fields && (
           <div>
             <div className="mb-5 text-center">
               <div className="font-display font-semibold text-[15.5px]">Auditing {fields.invoiceNumber}</div>
-              <div className="text-[12.5px] text-muted-foreground">Running 5 checks against the consultant roster</div>
+              <div className="text-[12.5px] text-muted-foreground">Running 7 checks against the consultant roster</div>
             </div>
             <ScanSequence data={fields} onComplete={() => setStage("review")} />
           </div>
@@ -227,7 +304,7 @@ export default function UploadInvoicePage() {
                 </div>
                 {flaggedCount > 0 && (
                   <span className="ml-auto text-[11.5px] font-semibold px-2.5 py-1 rounded-full bg-danger-soft text-danger">
-                    {flaggedCount} check{flaggedCount > 1 ? "s" : ""} flagged
+                    {flaggedCount} check{flaggedCount > 1 ? "s" : ""} need{flaggedCount > 1 ? "" : "s"} attention
                   </span>
                 )}
               </div>
@@ -289,6 +366,14 @@ export default function UploadInvoicePage() {
                     type="date"
                     value={fields.dueDate ?? ""}
                     onChange={(e) => updateField("dueDate", e.target.value || null)}
+                  />
+                </Field>
+                <Field label="Payment terms">
+                  <Input
+                    value={fields.paymentTermsLabel ?? ""}
+                    disabled
+                    placeholder="Not detected"
+                    className="text-text-faint"
                   />
                 </Field>
               </div>

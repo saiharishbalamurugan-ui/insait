@@ -50,6 +50,8 @@ export type DiscrepancyType =
   | "TAX_ERROR"
   | "HOLIDAY_OVERBILLING"
   | "DUE_DATE_MISMATCH"
+  | "DUPLICATE_INVOICE"
+  | "MISSING_REQUIRED_FIELD"
   | "OTHER";
 
 export interface AuditFinding {
@@ -129,7 +131,8 @@ export type ExtractableField =
   | "issueDate"
   | "dueDate"
   | "periodStart"
-  | "periodEnd";
+  | "periodEnd"
+  | "paymentTerms";
 
 export interface FieldPosition {
   field: ExtractableField;
@@ -140,12 +143,21 @@ export interface FieldPosition {
   height: number;
 }
 
-export type CheckRule = "APPROVED_HOURS" | "BILLING_RATE" | "HOLIDAY_HOURS" | "SUBMISSION_DATE" | "DUE_DATE";
+export type CheckRule =
+  | "APPROVED_HOURS"
+  | "BILLING_RATE"
+  | "HOLIDAY_HOURS"
+  | "SUBMISSION_DATE"
+  | "DUE_DATE"
+  | "DUPLICATE_INVOICE"
+  | "MISSING_FIELDS";
+
+export type CheckStatus = "passed" | "warning" | "flagged" | "skipped";
 
 export interface CheckResult {
   rule: CheckRule;
   label: string;
-  status: "passed" | "flagged" | "skipped";
+  status: CheckStatus;
   discrepancyType: DiscrepancyType | null;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
   expectedValue: string | null;
@@ -153,6 +165,7 @@ export interface CheckResult {
   explanation: string;
   relatedFields: ExtractableField[];
   overpayImpact: number;
+  diffDays?: number | null;
 }
 
 export interface ExtractedInvoiceData {
@@ -167,10 +180,13 @@ export interface ExtractedInvoiceData {
   dueDate: string | null;
   periodStart: string | null;
   periodEnd: string | null;
+  paymentTermsLabel: string | null;
+  paymentTermsDays: number | null;
   fieldPositions: FieldPosition[];
   fileUrl: string;
   mimeType: string;
   uploadedAt: string;
+  receivedDate: string;
   checks: CheckResult[];
 }
 
@@ -186,8 +202,11 @@ export interface CreateInvoicePayload {
   dueDate: string | null;
   periodStart: string | null;
   periodEnd: string | null;
+  paymentTermsLabel: string | null;
+  paymentTermsDays: number | null;
   fileUrl: string | null;
   uploadedAt: string;
+  receivedDate: string;
   extractedData: unknown;
 }
 

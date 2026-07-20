@@ -4,18 +4,25 @@ import { PrismaService } from "../prisma/prisma.service";
 import { holidaysInRange } from "./holiday-calendar";
 import { ExtractableField, ExtractedInvoiceData } from "./invoice-extraction.service";
 
-const PAYMENT_TERMS_DAYS = 45;
 const STANDARD_WEEKLY_HOURS = 40;
 const HOURS_PER_HOLIDAY = 8;
 const SUBMISSION_DATE_TOLERANCE_DAYS = 14;
-const DUE_DATE_TOLERANCE_DAYS = 1;
+const DUE_DATE_WARNING_DAYS = 3; // 1-3 days off => warning
+const REQUIRED_FIELDS: ExtractableField[] = ["vendorName", "invoiceNumber", "amount", "issueDate", "hours", "hourlyRate"];
 
-export type CheckRule = "APPROVED_HOURS" | "BILLING_RATE" | "HOLIDAY_HOURS" | "SUBMISSION_DATE" | "DUE_DATE";
+export type CheckRule =
+  | "APPROVED_HOURS"
+  | "BILLING_RATE"
+  | "HOLIDAY_HOURS"
+  | "SUBMISSION_DATE"
+  | "DUE_DATE"
+  | "DUPLICATE_INVOICE"
+  | "MISSING_FIELDS";
 
 export interface CheckResult {
   rule: CheckRule;
   label: string;
-  status: "passed" | "flagged" | "skipped";
+  status: "passed" | "warning" | "flagged" | "skipped";
   discrepancyType: DiscrepancyType | null;
   severity: Severity | null;
   expectedValue: string | null;
@@ -23,6 +30,8 @@ export interface CheckResult {
   explanation: string;
   relatedFields: ExtractableField[];
   overpayImpact: number;
+  /** Signed day difference (invoice's stated date minus expected), only populated by the Due Date check. */
+  diffDays?: number | null;
 }
 
 interface RosterMatch {
@@ -49,8 +58,9 @@ export class InvoiceChecksService {
   async runChecks(
     data: ExtractedInvoiceData,
     organizationId: string,
-    uploadedAt: Date,
+    receivedDate: Date,
     month: string,
+    excludeInvoiceId?: string,
   ): Promise<CheckResult[]> {
     const roster = await this.findRosterMatch(data, organizationId, month);
 
@@ -58,8 +68,10 @@ export class InvoiceChecksService {
       this.checkApprovedHours(data, roster),
       this.checkBillingRate(data, roster),
       this.checkHolidayHours(data, roster),
-      this.checkSubmissionDate(data, uploadedAt),
-      this.checkDueDate(data, uploadedAt),
+      this.checkSubmissionDate(data, receivedDate),
+      this.checkDueDate(data, receivedDate),
+      await this.checkDuplicateInvoice(data, organizationId, month, excludeInvoiceId),
+      this.checkMissingFields(data),
     ];
   }
 
@@ -256,7 +268,7 @@ export class InvoiceChecksService {
     };
   }
 
-  private checkSubmissionDate(data: ExtractedInvoiceData, uploadedAt: Date): CheckResult {
+  private checkSubmissionDate(data: ExtractedInvoiceData, receivedDate: Date): CheckResult {
     const rule: CheckRule = "SUBMISSION_DATE";
     const label = "Submission Date";
 
@@ -265,7 +277,7 @@ export class InvoiceChecksService {
     }
 
     const issueDate = new Date(data.issueDate);
-    const gap = daysBetween(uploadedAt, issueDate);
+    const gap = daysBetween(receivedDate, issueDate);
 
     if (gap > SUBMISSION_DATE_TOLERANCE_DAYS) {
       return {
@@ -274,9 +286,9 @@ export class InvoiceChecksService {
         status: "flagged",
         discrepancyType: DiscrepancyType.DATE_MISMATCH,
         severity: Severity.MEDIUM,
-        expectedValue: `Within ${SUBMISSION_DATE_TOLERANCE_DAYS} days of ${fmtDate(uploadedAt)}`,
+        expectedValue: `Within ${SUBMISSION_DATE_TOLERANCE_DAYS} days of ${fmtDate(receivedDate)}`,
         actualValue: fmtDate(issueDate),
-        explanation: `The invoice is dated ${fmtDate(issueDate)}, but it was actually received on ${fmtDate(uploadedAt)} — a ${gap}-day gap, which may indicate backdating.`,
+        explanation: `The invoice is dated ${fmtDate(issueDate)}, but the email was received on ${fmtDate(receivedDate)} — a ${gap}-day gap, which may indicate backdating.`,
         relatedFields: ["issueDate"],
         overpayImpact: 0,
       };
@@ -288,19 +300,28 @@ export class InvoiceChecksService {
       status: "passed",
       discrepancyType: null,
       severity: null,
-      expectedValue: fmtDate(uploadedAt),
+      expectedValue: fmtDate(receivedDate),
       actualValue: fmtDate(issueDate),
-      explanation: `Invoice date (${fmtDate(issueDate)}) is consistent with when it was actually received.`,
+      explanation: `Invoice date (${fmtDate(issueDate)}) is consistent with when the email was actually received.`,
       relatedFields: ["issueDate"],
       overpayImpact: 0,
     };
   }
 
-  private checkDueDate(data: ExtractedInvoiceData, uploadedAt: Date): CheckResult {
+  private checkDueDate(data: ExtractedInvoiceData, receivedDate: Date): CheckResult {
     const rule: CheckRule = "DUE_DATE";
     const label = "Due Date";
 
-    const expectedDueDate = new Date(uploadedAt.getTime() + PAYMENT_TERMS_DAYS * 86400000);
+    if (data.paymentTermsDays === null) {
+      return this.skipped(
+        rule,
+        label,
+        "No payment terms detected on the invoice — enter them manually to validate the due date.",
+      );
+    }
+
+    const termsLabel = data.paymentTermsLabel ?? `Net ${data.paymentTermsDays}`;
+    const expectedDueDate = new Date(receivedDate.getTime() + data.paymentTermsDays * 86400000);
 
     if (!data.dueDate) {
       return {
@@ -311,26 +332,122 @@ export class InvoiceChecksService {
         severity: null,
         expectedValue: fmtDate(expectedDueDate),
         actualValue: null,
-        explanation: `No due date printed on the invoice. Based on Net ${PAYMENT_TERMS_DAYS} terms from the actual receipt date, it should be ${fmtDate(expectedDueDate)}.`,
-        relatedFields: ["dueDate"],
+        explanation: `No due date printed on the invoice. Based on the email received date and ${termsLabel} terms, it should be ${fmtDate(expectedDueDate)}.`,
+        relatedFields: ["dueDate", "paymentTerms"],
         overpayImpact: 0,
       };
     }
 
     const statedDueDate = new Date(data.dueDate);
-    const gap = Math.abs(daysBetween(statedDueDate, expectedDueDate));
+    const diffDays = daysBetween(statedDueDate, expectedDueDate);
+    const absDiff = Math.abs(diffDays);
+    const diffLabel = diffDays === 0 ? "0 days" : `${diffDays > 0 ? "+" : ""}${diffDays} days`;
 
-    if (gap > DUE_DATE_TOLERANCE_DAYS) {
+    if (absDiff === 0) {
+      return {
+        rule,
+        label,
+        status: "passed",
+        discrepancyType: null,
+        severity: null,
+        expectedValue: `${fmtDate(expectedDueDate)} (${termsLabel} from receipt)`,
+        actualValue: fmtDate(statedDueDate),
+        explanation: `Based on the email received date (${fmtDate(receivedDate)}) and the detected ${termsLabel} terms, the expected due date is ${fmtDate(expectedDueDate)}, matching the invoice exactly.`,
+        relatedFields: ["dueDate", "paymentTerms"],
+        overpayImpact: 0,
+        diffDays,
+      };
+    }
+
+    const isWarning = absDiff <= DUE_DATE_WARNING_DAYS;
+    return {
+      rule,
+      label,
+      status: isWarning ? "warning" : "flagged",
+      discrepancyType: DiscrepancyType.DUE_DATE_MISMATCH,
+      severity: isWarning ? Severity.LOW : Severity.MEDIUM,
+      expectedValue: `${fmtDate(expectedDueDate)} (${termsLabel} from receipt)`,
+      actualValue: fmtDate(statedDueDate),
+      explanation: `Based on the email received date (${fmtDate(receivedDate)}) and the detected ${termsLabel} terms, the expected due date is ${fmtDate(expectedDueDate)}. The invoice lists ${fmtDate(statedDueDate)}, a ${diffLabel} discrepancy.`,
+      relatedFields: ["dueDate", "paymentTerms"],
+      overpayImpact: 0,
+      diffDays,
+    };
+  }
+
+  private async checkDuplicateInvoice(
+    data: ExtractedInvoiceData,
+    organizationId: string,
+    month: string,
+    excludeInvoiceId?: string,
+  ): Promise<CheckResult> {
+    const rule: CheckRule = "DUPLICATE_INVOICE";
+    const label = "Duplicate Invoice";
+
+    if (!data.invoiceNumber || !data.vendorName) {
+      return this.skipped(rule, label, "Missing invoice number or vendor — can't check for duplicates.");
+    }
+
+    const matches = await this.prisma.invoice.findMany({
+      where: {
+        organizationId,
+        month,
+        invoiceNumber: { equals: data.invoiceNumber, mode: "insensitive" },
+        vendorName: { equals: data.vendorName, mode: "insensitive" },
+        ...(excludeInvoiceId ? { id: { not: excludeInvoiceId } } : {}),
+      },
+      select: { id: true, createdAt: true },
+    });
+
+    if (matches.length > 0) {
       return {
         rule,
         label,
         status: "flagged",
-        discrepancyType: DiscrepancyType.DUE_DATE_MISMATCH,
-        severity: Severity.LOW,
-        expectedValue: `${fmtDate(expectedDueDate)} (Net ${PAYMENT_TERMS_DAYS} from receipt)`,
-        actualValue: fmtDate(statedDueDate),
-        explanation: `Based on Net ${PAYMENT_TERMS_DAYS} terms from the actual receipt date (${fmtDate(uploadedAt)}), the due date should be ${fmtDate(expectedDueDate)}, but the invoice states ${fmtDate(statedDueDate)}.`,
-        relatedFields: ["dueDate"],
+        discrepancyType: DiscrepancyType.DUPLICATE_INVOICE,
+        severity: Severity.HIGH,
+        expectedValue: "Unique per vendor per month",
+        actualValue: `${matches.length} other invoice${matches.length > 1 ? "s" : ""} already on file this month`,
+        explanation: `Invoice ${data.invoiceNumber} from ${data.vendorName} already appears ${matches.length} time${matches.length > 1 ? "s" : ""} this month — check it isn't being paid twice.`,
+        relatedFields: ["invoiceNumber", "vendorName"],
+        overpayImpact: data.amount ?? 0,
+      };
+    }
+
+    return {
+      rule,
+      label,
+      status: "passed",
+      discrepancyType: null,
+      severity: null,
+      expectedValue: "Unique per vendor per month",
+      actualValue: "No matches found",
+      explanation: `No other invoice numbered ${data.invoiceNumber} from ${data.vendorName} exists this month.`,
+      relatedFields: ["invoiceNumber", "vendorName"],
+      overpayImpact: 0,
+    };
+  }
+
+  private checkMissingFields(data: ExtractedInvoiceData): CheckResult {
+    const rule: CheckRule = "MISSING_FIELDS";
+    const label = "Missing Fields";
+
+    const missing = REQUIRED_FIELDS.filter((field) => {
+      const value = data[field as keyof ExtractedInvoiceData];
+      return value === null || value === undefined || value === "";
+    });
+
+    if (missing.length > 0) {
+      return {
+        rule,
+        label,
+        status: "flagged",
+        discrepancyType: DiscrepancyType.MISSING_REQUIRED_FIELD,
+        severity: Severity.MEDIUM,
+        expectedValue: "All required fields present",
+        actualValue: `Missing: ${missing.join(", ")}`,
+        explanation: `The AI couldn't find ${missing.length > 1 ? "these fields" : "this field"} anywhere on the document: ${missing.join(", ")}. Double-check the original invoice.`,
+        relatedFields: missing,
         overpayImpact: 0,
       };
     }
@@ -341,10 +458,10 @@ export class InvoiceChecksService {
       status: "passed",
       discrepancyType: null,
       severity: null,
-      expectedValue: fmtDate(expectedDueDate),
-      actualValue: fmtDate(statedDueDate),
-      explanation: `Due date matches Net ${PAYMENT_TERMS_DAYS} terms calculated from the actual receipt date.`,
-      relatedFields: ["dueDate"],
+      expectedValue: "All required fields present",
+      actualValue: "All required fields present",
+      explanation: "Every required field was found on the document.",
+      relatedFields: [],
       overpayImpact: 0,
     };
   }
