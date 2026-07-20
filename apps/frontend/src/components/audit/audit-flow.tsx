@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle } from "lucide-react";
+import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle, Lock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useInvoice, useTriggerAudit } from "@/lib/hooks/use-invoice";
 import { useReportAction } from "@/lib/hooks/use-reports";
+import { useMonthContext } from "@/lib/hooks/use-month";
 import { money, fmtDate } from "@/lib/format";
 import { StatusBadge } from "@/components/invoices/status-badge";
 import { ConfidenceRing } from "@/components/audit/confidence-ring";
@@ -149,6 +150,8 @@ export function AuditFlow({ invoiceId }: { invoiceId: string }) {
 
 function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useInvoice>["data"]> }) {
   const reportAction = useReportAction();
+  const { currentMonthLabel } = useMonthContext();
+  const isHistorical = currentMonthLabel !== null && invoice.month !== currentMonthLabel;
   const report = invoice.latestReport;
   const ts = invoice.matchedTimesheet;
   const checks = invoice.checks;
@@ -395,6 +398,12 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
             </div>
           </div>
 
+          {isHistorical && (
+            <div className="mb-3 flex items-center gap-2 p-3 rounded-lg bg-secondary text-text-faint font-medium text-[12.5px]">
+              <Lock className="size-3.5" /> This invoice is in a historical month and is read-only.
+            </div>
+          )}
+
           {isClean ? (
             <div className="flex items-center gap-2 p-3 rounded-lg bg-success-soft text-success font-semibold text-[13px]">
               <Check className="size-4" /> This invoice is cleared for standard payment — no action needed.
@@ -404,7 +413,7 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  disabled={!!action || reportAction.isPending}
+                  disabled={!!action || reportAction.isPending || isHistorical}
                   className="gap-1.5"
                   onClick={() =>
                     report && reportAction.mutate({ reportId: report.id, action: "APPROVED" }, { onSuccess: () => toast.success("Payment approved") })
@@ -416,7 +425,7 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
                   size="sm"
                   variant="outline"
                   className="gap-1.5 border-transparent bg-danger-soft text-danger hover:bg-danger-soft/80"
-                  disabled={!!action || reportAction.isPending}
+                  disabled={!!action || reportAction.isPending || isHistorical}
                   onClick={() =>
                     report && reportAction.mutate({ reportId: report.id, action: "REJECTED" }, { onSuccess: () => toast.success("Invoice rejected") })
                   }
@@ -427,7 +436,7 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
                   size="sm"
                   variant="outline"
                   className="gap-1.5"
-                  disabled={!!action || reportAction.isPending}
+                  disabled={!!action || reportAction.isPending || isHistorical}
                   onClick={() =>
                     report &&
                     reportAction.mutate(

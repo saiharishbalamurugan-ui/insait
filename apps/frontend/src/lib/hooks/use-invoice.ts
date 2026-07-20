@@ -21,3 +21,14 @@ export function useTriggerAudit(id: string) {
     },
   });
 }
+
+export function useBulkDeleteInvoices() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => apiClient.post<{ deleted: number }>("/invoices/bulk-delete", { ids }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+  });
+}

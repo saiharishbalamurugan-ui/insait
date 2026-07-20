@@ -54,6 +54,12 @@ export class InvoicesController {
     return this.invoicesService.create(body, this.checksService);
   }
 
+  @Post("bulk-delete")
+  bulkDelete(@Body("ids") ids: string[]) {
+    if (!Array.isArray(ids) || ids.length === 0) throw new BadRequestException("No invoice ids given");
+    return this.invoicesService.bulkDelete(ids);
+  }
+
   @Get(":id")
   findOne(@Param("id") id: string) {
     return this.invoicesService.findOne(id);

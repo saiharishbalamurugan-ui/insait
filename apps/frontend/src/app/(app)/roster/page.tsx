@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { UploadCloud, Loader2, Users, AlertTriangle, X } from "lucide-react";
+import { UploadCloud, Loader2, Users, AlertTriangle, X, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
@@ -11,9 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRoster, useUploadRoster, RosterUploadResult } from "@/lib/hooks/use-roster";
 import { money, initials, initialsColor, fmtDateShort } from "@/lib/format";
 import { ApiError } from "@/lib/api-client";
+import { useMonthContext } from "@/lib/hooks/use-month";
 
 export default function RosterPage() {
   const { data: roster, isLoading } = useRoster();
+  const { isViewingCurrent } = useMonthContext();
   const upload = useUploadRoster();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -50,6 +52,14 @@ export default function RosterPage() {
           </div>
         </div>
 
+        {!isViewingCurrent ? (
+          <Card className="mb-[18px]">
+            <CardContent className="py-6 flex items-center gap-2.5 text-[12.5px] text-text-faint">
+              <Lock className="size-4" />
+              You&apos;re viewing a historical month's roster (read-only). Switch to the current month to upload changes.
+            </CardContent>
+          </Card>
+        ) : (
         <Card className="mb-[18px]">
           <CardContent className="p-0">
             <div
@@ -92,6 +102,7 @@ export default function RosterPage() {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {failedRows.length > 0 && (
           <Card className="mb-[18px] border-warning/40 bg-warning-soft">

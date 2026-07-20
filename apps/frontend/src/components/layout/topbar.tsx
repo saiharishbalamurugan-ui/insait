@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { APP_NAME } from "@/lib/brand";
+import { MonthSelector } from "@/components/layout/month-selector";
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
@@ -48,6 +49,7 @@ export function Topbar({ searchValue, onSearchChange, searchPlaceholder }: Topba
   return (
     <div className="h-[60px] shrink-0 flex items-center gap-3.5 px-6 border-b border-border bg-card sticky top-0 z-20">
       <div className="font-display font-semibold text-[17px]">{titleFor(pathname)}</div>
+      <MonthSelector />
       <div className="flex-1" />
       {onSearchChange && (
         <div className="w-[280px]">

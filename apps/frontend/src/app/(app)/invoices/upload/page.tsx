@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, Loader2, Sparkles, AlertTriangle, Users, ArrowRight } from "lucide-react";
+import { UploadCloud, FileText, Loader2, Sparkles, AlertTriangle, Users, ArrowRight, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
@@ -15,11 +15,13 @@ import { useExtractInvoice, useCreateInvoice } from "@/lib/hooks/use-upload-invo
 import { ExtractedInvoiceData } from "@/lib/types";
 import { ApiError } from "@/lib/api-client";
 import { ScanSequence } from "@/components/upload/scan-sequence";
+import { useMonthContext } from "@/lib/hooks/use-month";
 
 type Stage = "pick" | "extracting" | "scanning" | "review";
 
 export default function UploadInvoicePage() {
   const router = useRouter();
+  const { isViewingCurrent, currentMonthLabel } = useMonthContext();
   const [stage, setStage] = useState<Stage>("pick");
   const [fileName, setFileName] = useState("");
   const [fields, setFields] = useState<ExtractedInvoiceData | null>(null);
@@ -28,6 +30,28 @@ export default function UploadInvoicePage() {
 
   const extract = useExtractInvoice();
   const create = useCreateInvoice();
+
+  if (currentMonthLabel && !isViewingCurrent) {
+    return (
+      <>
+        <Topbar />
+        <PageContent className="max-w-[720px]">
+          <Card>
+            <CardContent className="text-center py-16 px-6">
+              <div className="size-14 rounded-2xl bg-secondary text-text-faint flex items-center justify-center mx-auto mb-4">
+                <Lock className="size-6" />
+              </div>
+              <div className="font-display font-semibold text-[15px] mb-1">You're viewing a historical month</div>
+              <div className="text-[12.5px] text-text-faint max-w-sm mx-auto">
+                Uploads always go into the current month. Switch the month selector at the top back to{" "}
+                {currentMonthLabel} to upload an invoice.
+              </div>
+            </CardContent>
+          </Card>
+        </PageContent>
+      </>
+    );
+  }
 
   function handleFile(file: File) {
     setFileName(file.name);

@@ -168,6 +168,14 @@ export class InvoicesService {
     return { jobId: job.id, status: "PROCESSING" };
   }
 
+  async bulkDelete(ids: string[]) {
+    const currentMonth = await this.monthsService.currentLabel();
+    const result = await this.prisma.invoice.deleteMany({
+      where: { id: { in: ids }, organizationId: DEMO_ORG_ID, month: currentMonth },
+    });
+    return { deleted: result.count };
+  }
+
   async create(
     data: {
       vendorName: string;
