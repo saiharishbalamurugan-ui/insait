@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, X, MinusCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { CheckResult, ExtractedInvoiceData } from "@/lib/types";
 import { API_BASE_URL } from "@/lib/api-client";
-import { DocumentAnnotator, AnnotationBox } from "./document-annotator";
-
-const STEP_DURATION_MS = 900;
+import { AnnotatedInvoiceViewer } from "@/components/document/annotated-invoice-viewer";
 
 export function ScanSequence({
   data,
@@ -15,50 +13,23 @@ export function ScanSequence({
   data: ExtractedInvoiceData;
   onComplete: () => void;
 }) {
-  const [stepIdx, setStepIdx] = useState(0);
   const checks = data.checks;
-
-  useEffect(() => {
-    if (stepIdx >= checks.length) {
-      const t = setTimeout(onComplete, 700);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setStepIdx((i) => i + 1), STEP_DURATION_MS);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepIdx, checks.length]);
-
-  const boxes: AnnotationBox[] = [];
-  checks.forEach((check, i) => {
-    if (i > stepIdx) return;
-    const tone =
-      i === stepIdx
-        ? "active"
-        : check.status === "flagged"
-          ? "flagged"
-          : check.status === "warning"
-            ? "warning"
-            : "passed";
-    for (const field of check.relatedFields) {
-      const existing = boxes.find((b) => b.field === field);
-      if (!existing || tone !== "active") {
-        if (existing) existing.tone = tone;
-        else boxes.push({ field, tone });
-      }
-    }
-  });
+  const [currentIndex, setCurrentIndex] = useState(-1);
 
   return (
     <div className="grid grid-cols-[620px_1fr] gap-6 items-start">
-      <DocumentAnnotator
+      <AnnotatedInvoiceViewer
         fileUrl={`${API_BASE_URL}${data.fileUrl}`}
         mimeType={data.mimeType}
         fieldPositions={data.fieldPositions}
-        boxes={boxes}
+        checks={checks}
+        autoPlay
+        onFirstPlayComplete={onComplete}
+        onStepChange={(index) => setCurrentIndex(index)}
       />
       <div className="flex flex-col gap-2.5 pt-1">
         {checks.map((check, i) => (
-          <StepRow key={check.rule} check={check} state={i < stepIdx ? "done" : i === stepIdx ? "active" : "pending"} />
+          <StepRow key={check.rule} check={check} state={i < currentIndex ? "done" : i === currentIndex ? "active" : "pending"} />
         ))}
       </div>
     </div>

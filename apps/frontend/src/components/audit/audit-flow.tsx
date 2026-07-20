@@ -13,6 +13,8 @@ import { money, fmtDate } from "@/lib/format";
 import { StatusBadge } from "@/components/invoices/status-badge";
 import { ConfidenceRing } from "@/components/audit/confidence-ring";
 import { downloadAuditReportPDF } from "@/lib/pdf";
+import { AnnotatedInvoiceViewer } from "@/components/document/annotated-invoice-viewer";
+import { API_BASE_URL } from "@/lib/api-client";
 
 const AUDIT_STEPS = [
   { key: "reading", name: "Reading Invoice", detail: "Parsing the attachment and locating key fields" },
@@ -326,44 +328,84 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
         </div>
       </Card>
 
-      <Card>
-        <CardContent className="p-5 flex gap-4">
-          <div className="size-[38px] rounded-[9px] bg-indigo-soft text-indigo flex items-center justify-center shrink-0">
-            <Sparkles className="size-[18px]" />
-          </div>
-          <div className="flex-1">
-            <div className="font-display font-semibold text-[15.5px] mb-2">Audit Analysis</div>
-            {report?.findings.length ? (
-              <div className="space-y-3">
-                {report.findings.map((f) => (
-                  <div key={f.id}>
-                    <div className="font-bold text-[14px] mb-1">{f.discrepancyType.replace(/_/g, " ")}</div>
-                    <div className="text-[13.5px] text-muted-foreground leading-relaxed">{f.explanation}</div>
-                  </div>
-                ))}
+      {checks && invoice.fileUrl && invoice.extractedFieldPositions?.length ? (
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="size-8 rounded-[9px] bg-indigo-soft text-indigo flex items-center justify-center shrink-0">
+                <Sparkles className="size-4" />
               </div>
-            ) : (
-              <div className="text-[13.5px] text-muted-foreground leading-relaxed">{report?.summary}</div>
-            )}
-            <div className="flex gap-5 mt-3.5">
-              {invoice.confidence !== null && (
-                <div>
-                  <div className="text-[11px] font-bold text-text-faint">CONFIDENCE</div>
-                  <div className="font-mono font-bold text-[15px]">{invoice.confidence.toFixed(1)}%</div>
+              <div className="flex-1">
+                <div className="font-display font-semibold text-[15.5px]">Audit Walkthrough</div>
+                <div className="text-[12px] text-muted-foreground">
+                  Step through each check, or hit play — click any highlighted box for details.
                 </div>
-              )}
-              <div>
-                <div className="text-[11px] font-bold text-text-faint">RISK</div>
-                <div
-                  className={`font-bold text-[15px] ${invoice.riskLabel === "High Risk" ? "text-danger" : invoice.riskLabel === "Flagged" ? "text-warning" : "text-success"}`}
-                >
-                  {invoice.riskLabel === "Approved" ? "Low" : invoice.riskLabel}
+              </div>
+              <div className="flex gap-4 shrink-0">
+                {invoice.confidence !== null && (
+                  <div className="text-right">
+                    <div className="text-[10px] font-bold text-text-faint">CONFIDENCE</div>
+                    <div className="font-mono font-bold text-[14px]">{invoice.confidence.toFixed(1)}%</div>
+                  </div>
+                )}
+                <div className="text-right">
+                  <div className="text-[10px] font-bold text-text-faint">RISK</div>
+                  <div
+                    className={`font-bold text-[14px] ${invoice.riskLabel === "High Risk" ? "text-danger" : invoice.riskLabel === "Flagged" ? "text-warning" : "text-success"}`}
+                  >
+                    {invoice.riskLabel === "Approved" ? "Low" : invoice.riskLabel}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+            <AnnotatedInvoiceViewer
+              fileUrl={`${API_BASE_URL}${invoice.fileUrl}`}
+              mimeType={invoice.fileUrl.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/*"}
+              fieldPositions={invoice.extractedFieldPositions}
+              checks={checks}
+            />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-5 flex gap-4">
+            <div className="size-[38px] rounded-[9px] bg-indigo-soft text-indigo flex items-center justify-center shrink-0">
+              <Sparkles className="size-[18px]" />
+            </div>
+            <div className="flex-1">
+              <div className="font-display font-semibold text-[15.5px] mb-2">Audit Analysis</div>
+              {report?.findings.length ? (
+                <div className="space-y-3">
+                  {report.findings.map((f) => (
+                    <div key={f.id}>
+                      <div className="font-bold text-[14px] mb-1">{f.discrepancyType.replace(/_/g, " ")}</div>
+                      <div className="text-[13.5px] text-muted-foreground leading-relaxed">{f.explanation}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[13.5px] text-muted-foreground leading-relaxed">{report?.summary}</div>
+              )}
+              <div className="flex gap-5 mt-3.5">
+                {invoice.confidence !== null && (
+                  <div>
+                    <div className="text-[11px] font-bold text-text-faint">CONFIDENCE</div>
+                    <div className="font-mono font-bold text-[15px]">{invoice.confidence.toFixed(1)}%</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-[11px] font-bold text-text-faint">RISK</div>
+                  <div
+                    className={`font-bold text-[15px] ${invoice.riskLabel === "High Risk" ? "text-danger" : invoice.riskLabel === "Flagged" ? "text-warning" : "text-success"}`}
+                  >
+                    {invoice.riskLabel === "Approved" ? "Low" : invoice.riskLabel}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-5">
