@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { AiAuditQueueService } from "../queue/ai-audit-queue.service";
 import { InvoiceChecksService, CheckResult } from "./invoice-checks.service";
 import { matchConfidence, riskLabel } from "../common/risk.util";
+import { MonthsService } from "../months/months.service";
 
 const DEMO_ORG_ID = "seed-org-1";
 
@@ -20,6 +21,7 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditQueue: AiAuditQueueService,
+    private readonly monthsService: MonthsService,
   ) {}
 
   private async loadInvoices(where: Record<string, unknown> = {}) {
@@ -70,11 +72,13 @@ export class InvoicesService {
       confidence: riskScore !== null ? matchConfidence(riskScore) : null,
       overpay,
       source: invoice.source,
+      month: invoice.month,
     };
   }
 
-  async findAll(params: { status?: string; search?: string }) {
-    const invoices = await this.loadInvoices();
+  async findAll(params: { status?: string; search?: string; month?: string }) {
+    const where = params.month ? { month: params.month } : {};
+    const invoices = await this.loadInvoices(where);
     let list = invoices.map((inv) => this.serialize(inv));
 
     if (params.status && params.status !== "all") {
@@ -157,6 +161,7 @@ export class InvoicesService {
   async triggerAudit(id: string) {
     const invoice = await this.prisma.invoice.findFirst({ where: { id, organizationId: DEMO_ORG_ID } });
     if (!invoice) throw new NotFoundException("Invoice not found");
+    await this.monthsService.assertCurrent(invoice.month);
 
     await this.prisma.invoice.update({ where: { id }, data: { status: "PROCESSING" } });
     const job = await this.auditQueue.enqueueAudit(id);
@@ -184,6 +189,7 @@ export class InvoicesService {
   ) {
     const hasLineItem = data.hours !== null && data.hourlyRate !== null;
     const uploadedAt = data.uploadedAt ? new Date(data.uploadedAt) : new Date();
+    const currentMonth = await this.monthsService.currentLabel();
 
     const fieldPositions =
       data.extractedData && typeof data.extractedData === "object" && "fieldPositions" in data.extractedData
@@ -193,6 +199,7 @@ export class InvoicesService {
     const invoice = await this.prisma.invoice.create({
       data: {
         organizationId: DEMO_ORG_ID,
+        month: currentMonth,
         vendorName: data.vendorName,
         invoiceNumber: data.invoiceNumber,
         amount: data.amount,
@@ -241,6 +248,7 @@ export class InvoicesService {
       },
       DEMO_ORG_ID,
       uploadedAt,
+      currentMonth,
     );
 
     const flaggedChecks = checks.filter((c) => c.status === "flagged");

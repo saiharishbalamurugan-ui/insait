@@ -5,6 +5,7 @@ import { apiClient, HealthCheckResult } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { APP_FULL_NAME } from "@/lib/brand";
 
 function StatusBadge({ ok, loading }: { ok: boolean | undefined; loading: boolean }) {
   if (loading) {
@@ -51,7 +52,7 @@ export default function Home() {
     <main className="flex-1 flex items-center justify-center p-8">
       <div className="w-full max-w-2xl space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-semibold tracking-tight">Audix</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">{APP_FULL_NAME}</h1>
           <p className="text-muted-foreground">Phase 0 — local foundation status</p>
         </div>
 

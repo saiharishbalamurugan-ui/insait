@@ -2,18 +2,23 @@ import { Injectable } from "@nestjs/common";
 import Anthropic from "@anthropic-ai/sdk";
 import { PrismaService } from "../prisma/prisma.service";
 import { riskLabel } from "../common/risk.util";
+import { MonthsService } from "../months/months.service";
 
 const CLAUDE_MODEL = "claude-opus-4-8";
+const DEMO_ORG_ID = "seed-org-1";
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly monthsService: MonthsService,
+  ) {}
 
   isAvailable() {
     return Boolean(process.env.ANTHROPIC_API_KEY);
   }
 
-  async reply(message: string, invoiceId?: string) {
+  async reply(message: string, invoiceId?: string, month?: string) {
     if (!this.isAvailable()) {
       return {
         available: false,
@@ -22,7 +27,9 @@ export class ChatService {
       };
     }
 
-    const context = invoiceId ? await this.buildInvoiceContext(invoiceId) : await this.buildPortfolioContext();
+    const context = invoiceId
+      ? await this.buildInvoiceContext(invoiceId)
+      : await this.buildPortfolioContext(month ?? (await this.monthsService.currentLabel()));
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await client.messages.create({
@@ -43,8 +50,8 @@ export class ChatService {
   }
 
   private async buildInvoiceContext(invoiceId: string) {
-    const invoice = await this.prisma.invoice.findUnique({
-      where: { id: invoiceId },
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId: DEMO_ORG_ID },
       include: {
         matchedTimesheet: true,
         auditReports: { orderBy: { createdAt: "desc" }, take: 1, include: { findings: true } },
@@ -62,12 +69,12 @@ Findings:
 ${findings}`;
   }
 
-  private async buildPortfolioContext() {
+  private async buildPortfolioContext(month: string) {
     const invoices = await this.prisma.invoice.findMany({
-      where: { status: "AUDITED" },
+      where: { status: "AUDITED", organizationId: DEMO_ORG_ID, month },
       include: { auditReports: { orderBy: { createdAt: "desc" }, take: 1 } },
     });
     const flagged = invoices.filter((i) => riskLabel(i.auditReports[0]?.overallRiskScore) !== "Approved");
-    return `Portfolio: ${invoices.length} audited invoices, ${flagged.length} flagged or high-risk.`;
+    return `Portfolio for ${month}: ${invoices.length} audited invoices, ${flagged.length} flagged or high-risk.`;
   }
 }

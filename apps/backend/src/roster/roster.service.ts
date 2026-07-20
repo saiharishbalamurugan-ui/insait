@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import * as XLSX from "xlsx";
 import { createHash } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { MonthsService } from "../months/months.service";
 
 const DEMO_ORG_ID = "seed-org-1";
 
@@ -81,7 +82,10 @@ export interface RosterRowResult {
 
 @Injectable()
 export class RosterService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly monthsService: MonthsService,
+  ) {}
 
   async uploadSheet(file: Express.Multer.File) {
     let workbook: XLSX.WorkBook;
@@ -96,6 +100,8 @@ export class RosterService {
     if (rows.length === 0) {
       throw new BadRequestException("That sheet has no rows.");
     }
+
+    const month = await this.monthsService.currentLabel();
 
     const results: RosterRowResult[] = [];
     let created = 0;
@@ -121,10 +127,11 @@ export class RosterService {
       const manager = (findValue(row, "manager") as string | undefined)?.trim() || null;
 
       // Same person can show up more than once in one sheet under different vendors/engagements
-      // (no per-row week column to disambiguate) — fold vendor/client into the dedup key so those
-      // don't silently clobber each other.
+      // (no per-row week column to disambiguate) — fold vendor/client and the upload month into the
+      // dedup key so those don't silently clobber each other, and re-uploading next month creates
+      // fresh rows instead of overwriting this month's roster.
       const engagementKey = (vendor || client || "").toLowerCase();
-      const sourceKey = `roster-${employeeName.toLowerCase()}-${engagementKey}-${weekStart ? weekStart.toISOString().slice(0, 10) : "no-week"}`;
+      const sourceKey = `roster-${employeeName.toLowerCase()}-${engagementKey}-${month}-${weekStart ? weekStart.toISOString().slice(0, 10) : "no-week"}`;
       const sourceId = createHash("sha1").update(sourceKey).digest("hex").slice(0, 24);
 
       try {
@@ -143,6 +150,7 @@ export class RosterService {
             hourlyRate: Number(rate),
             project,
             managerName: manager,
+            month,
           },
           update: {
             hours: Number(hours),
@@ -164,9 +172,9 @@ export class RosterService {
     return { totalRows: rows.length, created, updated, failed: results.filter((r) => !r.ok).length, results };
   }
 
-  async findAll() {
+  async findAll(month?: string) {
     const roster = await this.prisma.timesheet.findMany({
-      where: { organizationId: DEMO_ORG_ID },
+      where: { organizationId: DEMO_ORG_ID, ...(month ? { month } : {}) },
       orderBy: [{ employeeName: "asc" }, { weekStart: "desc" }],
     });
 
@@ -181,6 +189,7 @@ export class RosterService {
       project: r.project,
       managerName: r.managerName,
       updatedAt: r.updatedAt,
+      month: r.month,
     }));
   }
 }

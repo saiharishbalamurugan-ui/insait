@@ -4,7 +4,7 @@ import { startAiAuditWorker } from "./processors/ai-audit.processor";
 const aiAuditWorker = startAiAuditWorker();
 
 aiAuditWorker.on("ready", () => {
-  console.log("Audix workers connected to Redis, listening for jobs...");
+  console.log("Audix – Invoice Reconciliation workers connected to Redis, listening for jobs...");
 });
 
 aiAuditWorker.on("error", (err) => {

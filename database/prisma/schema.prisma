@@ -19,9 +19,27 @@ model Organization {
   users                User[]
   invoices             Invoice[]
   timesheets           Timesheet[]
+  months               Month[]
   quickbooksConnection QuickBooksConnection?
   emailIngestionLogs   EmailIngestionLog[]
   chatSessions         ChatSession[]
+}
+
+// ── Monthly workspaces ──────────────────────────────────────────────────
+// Invoices/roster rows are tagged with a plain "YYYY-MM" label (not an FK) —
+// exactly one Month per org is current (editable); everything else is read-only history.
+model Month {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  label     String // "2026-07"
+  isCurrent Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, label])
+  @@index([organizationId])
 }
 
 enum UserRole {
@@ -86,6 +104,8 @@ model Invoice {
   source        InvoiceSource @default(MANUAL_UPLOAD)
   status        InvoiceStatus @default(PENDING)
 
+  month String // "YYYY-MM" — the month this invoice was uploaded into, set once at creation
+
   // Staffing/consulting invoice fields — who is being billed for what
   consultantName String?
   project        String?
@@ -107,6 +127,7 @@ model Invoice {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, month])
 }
 
 model InvoiceLineItem {
@@ -137,12 +158,15 @@ model Timesheet {
   project      String?
   managerName  String?
 
+  month String // "YYYY-MM" — the month this roster row was uploaded for
+
   matchedInvoice Invoice?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, month])
 }
 
 // ── AI audit results (Phase 2) ──────────────────────────────────────────

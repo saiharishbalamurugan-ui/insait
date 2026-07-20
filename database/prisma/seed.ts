@@ -103,6 +103,14 @@ async function main() {
   await prisma.invoice.deleteMany({ where: { organizationId: org.id } });
   await prisma.timesheet.deleteMany({ where: { organizationId: org.id } });
 
+  const currentMonthLabel = new Date().toISOString().slice(0, 7);
+  await prisma.month.updateMany({ where: { organizationId: org.id }, data: { isCurrent: false } });
+  await prisma.month.upsert({
+    where: { organizationId_label: { organizationId: org.id, label: currentMonthLabel } },
+    update: { isCurrent: true },
+    create: { organizationId: org.id, label: currentMonthLabel, isCurrent: true },
+  });
+
   type SeedRow = {
     num: string;
     consultantName: string;
@@ -153,6 +161,7 @@ async function main() {
           hourlyRate: row.timesheetRate,
           project: row.project,
           managerName: row.managerName,
+          month: currentMonthLabel,
         },
       });
     }
@@ -173,6 +182,7 @@ async function main() {
         hours: row.invoiceHours,
         hourlyRate: row.invoiceRate,
         matchedTimesheetId: timesheet?.id,
+        month: currentMonthLabel,
         lineItems: {
           create: [
             {

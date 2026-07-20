@@ -8,14 +8,17 @@ const DEMO_ORG_ID = "seed-org-1";
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async stats() {
-    const invoices = await this.prisma.invoice.findMany({
+  async stats(month?: string) {
+    const allInvoices = await this.prisma.invoice.findMany({
       where: { organizationId: DEMO_ORG_ID },
       include: {
         matchedTimesheet: true,
         auditReports: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     });
+    // Headline numbers are scoped to the selected month; the volume trend chart
+    // below stays all-time so the bars are actually meaningful across months.
+    const invoices = month ? allInvoices.filter((inv) => inv.month === month) : allInvoices;
 
     const total = invoices.length;
     const totalValue = invoices.reduce((s, i) => s + Number(i.amount), 0);
@@ -52,7 +55,7 @@ export class DashboardService {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const label = d.toLocaleString("en-US", { month: "short" });
-      const count = invoices.filter((inv) => {
+      const count = allInvoices.filter((inv) => {
         const iss = inv.issueDate;
         return iss.getFullYear() === d.getFullYear() && iss.getMonth() === d.getMonth();
       }).length;

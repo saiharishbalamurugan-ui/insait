@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ReportsService } from "./reports.service";
 
 @Controller("reports")
@@ -6,8 +6,8 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Get()
-  findAll() {
-    return this.reportsService.findAll();
+  findAll(@Query("month") month?: string) {
+    return this.reportsService.findAll(month);
   }
 
   @Post(":id/action")

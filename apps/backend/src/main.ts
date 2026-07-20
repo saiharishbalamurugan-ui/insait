@@ -10,7 +10,7 @@ async function bootstrap() {
   app.useStaticAssets(join(process.cwd(), "uploads"), { prefix: "/uploads" });
   const port = process.env.BACKEND_PORT ?? 4000;
   await app.listen(port);
-  console.log(`Audix backend listening on http://localhost:${port}`);
+  console.log(`Audix – Invoice Reconciliation backend listening on http://localhost:${port}`);
 }
 
 bootstrap();

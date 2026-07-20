@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { ReportItem } from "@/lib/types";
+import { useMonthContext } from "@/lib/hooks/use-month";
 
 export function useReports() {
+  const { selectedMonth } = useMonthContext();
   return useQuery<ReportItem[]>({
-    queryKey: ["reports"],
-    queryFn: () => apiClient.get<ReportItem[]>("/reports"),
+    queryKey: ["reports", selectedMonth],
+    queryFn: () => apiClient.get<ReportItem[]>(`/reports${selectedMonth ? `?month=${selectedMonth}` : ""}`),
+    enabled: selectedMonth !== null,
   });
 }
 

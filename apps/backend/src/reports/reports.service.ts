@@ -1,17 +1,21 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { riskLabel } from "../common/risk.util";
+import { MonthsService } from "../months/months.service";
 
 const DEMO_ORG_ID = "seed-org-1";
 const VALID_ACTIONS = ["APPROVED", "REJECTED", "CLARIFICATION_REQUESTED"] as const;
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly monthsService: MonthsService,
+  ) {}
 
-  async findAll() {
+  async findAll(month?: string) {
     const invoices = await this.prisma.invoice.findMany({
-      where: { organizationId: DEMO_ORG_ID, status: "AUDITED" },
+      where: { organizationId: DEMO_ORG_ID, status: "AUDITED", ...(month ? { month } : {}) },
       include: {
         matchedTimesheet: true,
         auditReports: {
@@ -69,8 +73,10 @@ export class ReportsService {
     }
     const report = await this.prisma.auditReport.findFirst({
       where: { id: reportId, invoice: { organizationId: DEMO_ORG_ID } },
+      include: { invoice: { select: { month: true } } },
     });
     if (!report) throw new NotFoundException("Audit report not found");
+    await this.monthsService.assertCurrent(report.invoice.month);
 
     return this.prisma.auditReport.update({
       where: { id: reportId },

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Inter, IBM_Plex_Mono } from "next/font/google";
+import { Poppins, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { APP_FULL_NAME } from "@/lib/brand";
 
-const spaceGrotesk = Space_Grotesk({
+const poppins = Poppins({
   variable: "--font-display",
   subsets: ["latin"],
   weight: ["500", "600", "700"],
@@ -24,8 +25,8 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Audix — AI Invoice Auditing",
-  description: "AI-powered invoice auditing against QuickBooks timesheets.",
+  title: APP_FULL_NAME,
+  description: "AI-powered invoice reconciliation for consulting and staffing invoices.",
 };
 
 export default function RootLayout({
@@ -36,7 +37,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${spaceGrotesk.variable} ${inter.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${poppins.variable} ${inter.variable} ${plexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <QueryProvider>

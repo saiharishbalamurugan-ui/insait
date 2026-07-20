@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { RosterService } from "./roster.service";
 
@@ -14,7 +14,7 @@ export class RosterController {
   }
 
   @Get()
-  findAll() {
-    return this.rosterService.findAll();
+  findAll(@Query("month") month?: string) {
+    return this.rosterService.findAll(month);
   }
 }

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { APP_NAME } from "@/lib/brand";
 
 const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
@@ -21,7 +22,7 @@ function titleFor(pathname: string) {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   if (pathname === "/invoices/upload") return "Upload Invoice";
   if (pathname.startsWith("/invoices/")) return "Invoice Detail";
-  return "Audix";
+  return APP_NAME;
 }
 
 interface TopbarProps {

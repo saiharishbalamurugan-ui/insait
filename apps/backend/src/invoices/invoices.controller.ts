@@ -3,6 +3,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { InvoicesService } from "./invoices.service";
 import { InvoiceExtractionService } from "./invoice-extraction.service";
 import { InvoiceChecksService } from "./invoice-checks.service";
+import { MonthsService } from "../months/months.service";
 
 const DEMO_ORG_ID = "seed-org-1";
 
@@ -29,6 +30,7 @@ export class InvoicesController {
     private readonly invoicesService: InvoicesService,
     private readonly extractionService: InvoiceExtractionService,
     private readonly checksService: InvoiceChecksService,
+    private readonly monthsService: MonthsService,
   ) {}
 
   @Post("extract")
@@ -36,14 +38,15 @@ export class InvoicesController {
   async extract(@UploadedFile() file?: Express.Multer.File) {
     if (!file) throw new BadRequestException("No file uploaded");
     const uploadedAt = new Date();
+    const currentMonth = await this.monthsService.currentLabel();
     const extracted = await this.extractionService.extract(file);
-    const checks = await this.checksService.runChecks(extracted, DEMO_ORG_ID, uploadedAt);
+    const checks = await this.checksService.runChecks(extracted, DEMO_ORG_ID, uploadedAt, currentMonth);
     return { ...extracted, uploadedAt: uploadedAt.toISOString(), checks };
   }
 
   @Get()
-  findAll(@Query("status") status?: string, @Query("search") search?: string) {
-    return this.invoicesService.findAll({ status, search });
+  findAll(@Query("status") status?: string, @Query("search") search?: string, @Query("month") month?: string) {
+    return this.invoicesService.findAll({ status, search, month });
   }
 
   @Post()

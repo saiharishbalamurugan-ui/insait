@@ -1,5 +1,6 @@
 import { InvoiceDetail } from "@/lib/types";
 import { money, fmtDate } from "@/lib/format";
+import { APP_FULL_NAME } from "@/lib/brand";
 
 export async function downloadAuditReportPDF(invoice: InvoiceDetail) {
   const { jsPDF } = await import("jspdf");
@@ -9,7 +10,7 @@ export async function downloadAuditReportPDF(invoice: InvoiceDetail) {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
-  doc.text("Audix — Audit Report", margin, y);
+  doc.text(`${APP_FULL_NAME} — Audit Report`, margin, y);
   y += 22;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);

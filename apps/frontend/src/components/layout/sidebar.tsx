@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useInvoices } from "@/lib/hooks/use-invoices";
 import { cn } from "@/lib/utils";
+import { APP_NAME } from "@/lib/brand";
 
 const NAV_ITEMS = [
   { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutGrid },
@@ -38,8 +39,8 @@ export function Sidebar() {
           <ShieldCheck className="size-4" strokeWidth={2.2} />
         </div>
         <div>
-          <div className="font-display font-bold text-[17px] tracking-tight leading-none">Audix</div>
-          <div className="text-[10.5px] text-text-faint uppercase tracking-wider mt-0.5">Invoice Auditor</div>
+          <div className="font-display font-bold text-[17px] tracking-tight leading-none">{APP_NAME}</div>
+          <div className="text-[10.5px] text-text-faint uppercase tracking-wider mt-0.5">Invoice Reconciliation</div>
         </div>
       </div>
 

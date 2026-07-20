@@ -50,8 +50,9 @@ export class InvoiceChecksService {
     data: ExtractedInvoiceData,
     organizationId: string,
     uploadedAt: Date,
+    month: string,
   ): Promise<CheckResult[]> {
-    const roster = await this.findRosterMatch(data, organizationId);
+    const roster = await this.findRosterMatch(data, organizationId, month);
 
     return [
       this.checkApprovedHours(data, roster),
@@ -62,11 +63,15 @@ export class InvoiceChecksService {
     ];
   }
 
-  private async findRosterMatch(data: ExtractedInvoiceData, organizationId: string): Promise<RosterMatch | null> {
+  private async findRosterMatch(
+    data: ExtractedInvoiceData,
+    organizationId: string,
+    month: string,
+  ): Promise<RosterMatch | null> {
     if (!data.consultantName) return null;
 
     const candidates = await this.prisma.timesheet.findMany({
-      where: { organizationId, employeeName: { equals: data.consultantName, mode: "insensitive" } },
+      where: { organizationId, month, employeeName: { equals: data.consultantName, mode: "insensitive" } },
       orderBy: { workDate: "desc" },
     });
     if (candidates.length === 0) return null;

@@ -18,6 +18,7 @@ export interface InvoiceListItem {
   confidence: number | null;
   overpay: number;
   source: "MANUAL_UPLOAD" | "EMAIL_INGESTION";
+  month: string;
 }
 
 export interface InvoiceLineItem {
@@ -201,4 +202,13 @@ export interface RosterEntry {
   project: string | null;
   managerName: string | null;
   updatedAt: string;
+  month: string;
+}
+
+export interface Month {
+  id: string;
+  organizationId: string;
+  label: string; // "YYYY-MM"
+  isCurrent: boolean;
+  createdAt: string;
 }
