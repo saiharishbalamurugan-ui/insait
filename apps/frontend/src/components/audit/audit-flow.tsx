@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle, Lock, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,8 +14,14 @@ import { money, fmtDate } from "@/lib/format";
 import { StatusBadge } from "@/components/invoices/status-badge";
 import { ConfidenceRing } from "@/components/audit/confidence-ring";
 import { downloadAuditReportPDF } from "@/lib/pdf";
-import { AnnotatedInvoiceViewer } from "@/components/document/annotated-invoice-viewer";
 import { API_BASE_URL } from "@/lib/api-client";
+
+// react-pdf touches browser-only APIs (DOMMatrix, Canvas) at module-evaluation time,
+// which crashes Next.js's build-time prerendering unless this stays client-only.
+const AnnotatedInvoiceViewer = dynamic(
+  () => import("@/components/document/annotated-invoice-viewer").then((m) => m.AnnotatedInvoiceViewer),
+  { ssr: false },
+);
 
 const AUDIT_STEPS = [
   { key: "reading", name: "Reading Invoice", detail: "Parsing the attachment and locating key fields" },

@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Check, X, MinusCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { CheckResult, ExtractedInvoiceData } from "@/lib/types";
 import { API_BASE_URL } from "@/lib/api-client";
-import { AnnotatedInvoiceViewer } from "@/components/document/annotated-invoice-viewer";
+
+// react-pdf touches browser-only APIs (DOMMatrix, Canvas) at module-evaluation time,
+// which crashes Next.js's build-time prerendering unless this stays client-only.
+const AnnotatedInvoiceViewer = dynamic(
+  () => import("@/components/document/annotated-invoice-viewer").then((m) => m.AnnotatedInvoiceViewer),
+  { ssr: false },
+);
 
 export function ScanSequence({
   data,
