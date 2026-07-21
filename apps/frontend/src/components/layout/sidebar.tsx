@@ -85,10 +85,19 @@ export function Sidebar() {
         <div className="size-[30px] rounded-full bg-gradient-to-br from-indigo to-primary text-white flex items-center justify-center text-[12px] font-semibold shrink-0">
           JM
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <div className="text-[12.5px] font-semibold leading-tight">Jordan Meyers</div>
           <div className="text-[11px] text-text-faint leading-tight">AP Finance Lead</div>
         </div>
+        <button
+          onClick={async () => {
+            await fetch("/api/logout", { method: "POST" });
+            window.location.href = "/login";
+          }}
+          className="text-[11px] text-text-faint hover:text-foreground shrink-0"
+        >
+          Log out
+        </button>
       </div>
     </aside>
   );
