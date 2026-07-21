@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutGrid,
@@ -34,9 +35,9 @@ export function Sidebar() {
 
   return (
     <aside className="w-[232px] shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0">
-      <div className="flex items-center gap-2.5 px-5 py-[22px] pb-[18px]">
-        <div className="size-8 rounded-[9px] bg-gradient-to-br from-primary to-indigo flex items-center justify-center text-white shrink-0">
-          <ShieldCheck className="size-4" strokeWidth={2.2} />
+      <div className="px-5 py-[22px] pb-[18px]">
+        <div className="bg-white rounded-lg px-2.5 py-2 inline-block mb-2.5">
+          <Image src="/logo.jpg" alt="INSAIT Solutions" width={350} height={107} className="h-[26px] w-auto" priority />
         </div>
         <div>
           <div className="font-display font-bold text-[17px] tracking-tight leading-none">{APP_NAME}</div>

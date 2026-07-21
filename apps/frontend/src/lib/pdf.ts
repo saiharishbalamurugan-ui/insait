@@ -2,16 +2,39 @@ import { InvoiceDetail } from "@/lib/types";
 import { money, fmtDate } from "@/lib/format";
 import { APP_FULL_NAME } from "@/lib/brand";
 
+async function loadLogoDataUrl(): Promise<string | null> {
+  try {
+    const res = await fetch("/logo.jpg");
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function downloadAuditReportPDF(invoice: InvoiceDetail) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const margin = 56;
   let y = 64;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(`${APP_FULL_NAME} — Audit Report`, margin, y);
-  y += 22;
+  const logoDataUrl = await loadLogoDataUrl();
+  if (logoDataUrl) {
+    const logoWidth = 100;
+    const logoHeight = 100 * (107 / 350);
+    doc.addImage(logoDataUrl, "JPEG", margin, y - logoHeight + 6, logoWidth, logoHeight);
+    y += 14;
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(`${APP_FULL_NAME} — Audit Report`, margin, y);
+    y += 22;
+  }
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(110);
