@@ -14,7 +14,8 @@ import { money, fmtDate } from "@/lib/format";
 import { StatusBadge } from "@/components/invoices/status-badge";
 import { ConfidenceRing } from "@/components/audit/confidence-ring";
 import { downloadAuditReportPDF } from "@/lib/pdf";
-import { API_BASE_URL } from "@/lib/api-client";
+import { resolveFileUrl } from "@/lib/api-client";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
 
 // react-pdf touches browser-only APIs (DOMMatrix, Canvas) at module-evaluation time,
 // which crashes Next.js's build-time prerendering unless this stays client-only.
@@ -366,7 +367,7 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
               </div>
             </div>
             <AnnotatedInvoiceViewer
-              fileUrl={`${API_BASE_URL}${invoice.fileUrl}`}
+              fileUrl={resolveFileUrl(invoice.fileUrl)}
               mimeType={invoice.fileUrl.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/*"}
               fieldPositions={invoice.extractedFieldPositions}
               checks={checks}
@@ -430,7 +431,10 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
           <div className="h-px bg-border mb-3.5" />
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-secondary rounded-lg p-3.5">
-              <div className="text-[11px] uppercase tracking-wide text-text-faint font-bold mb-1">Risk Score</div>
+              <div className="text-[11px] uppercase tracking-wide text-text-faint font-bold mb-1 flex items-center gap-1">
+                Risk Score
+                <InfoTooltip text="0–19 = Approved (no or trivial issues), 20–74 = Flagged (real discrepancies worth reviewing), 75+ = High Risk (severe or multiple issues). It's a ranking of how much attention an invoice needs, not a pass/fail gate — every discrepancy gets flagged regardless of size." />
+              </div>
               <div
                 className={`font-semibold ${invoice.riskLabel === "High Risk" ? "text-danger" : invoice.riskLabel === "Flagged" ? "text-warning" : "text-success"}`}
               >

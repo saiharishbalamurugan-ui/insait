@@ -49,16 +49,17 @@ export class DashboardService {
       if (label !== "Approved") savings += overpay;
     }
 
-    // Monthly volume trend (last 6 months, counting by issueDate)
+    // Monthly volume trend (last 6 workspace months, counting by the same `month` field
+    // used everywhere else — not issueDate, which is a different date printed on the
+    // invoice and could disagree with which workspace month it was actually uploaded into).
     const monthBuckets: { label: string; value: number }[] = [];
-    const now = new Date();
+    const anchor = month ?? new Date().toISOString().slice(0, 7);
+    const [anchorYear, anchorMonth] = anchor.split("-").map(Number);
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const label = d.toLocaleString("en-US", { month: "short" });
-      const count = allInvoices.filter((inv) => {
-        const iss = inv.issueDate;
-        return iss.getFullYear() === d.getFullYear() && iss.getMonth() === d.getMonth();
-      }).length;
+      const d = new Date(Date.UTC(anchorYear, anchorMonth - 1 - i, 1));
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+      const count = allInvoices.filter((inv) => inv.month === key).length;
       monthBuckets.push({ label, value: count });
     }
 

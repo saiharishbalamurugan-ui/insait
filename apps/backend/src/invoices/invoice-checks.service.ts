@@ -316,7 +316,7 @@ export class InvoiceChecksService {
       return this.skipped(
         rule,
         label,
-        "No payment terms detected on the invoice — enter them manually to validate the due date.",
+        "No payment term found on the invoice — enter it manually to validate the due date.",
       );
     }
 
@@ -352,7 +352,7 @@ export class InvoiceChecksService {
         severity: null,
         expectedValue: `${fmtDate(expectedDueDate)} (${termsLabel} from receipt)`,
         actualValue: fmtDate(statedDueDate),
-        explanation: `Based on the email received date (${fmtDate(receivedDate)}) and the detected ${termsLabel} terms, the expected due date is ${fmtDate(expectedDueDate)}, matching the invoice exactly.`,
+        explanation: `Based on the email received date (${fmtDate(receivedDate)}) and the ${termsLabel} payment term, the expected due date is ${fmtDate(expectedDueDate)}, matching the invoice exactly.`,
         relatedFields: ["dueDate", "paymentTerms"],
         overpayImpact: 0,
         diffDays,
@@ -368,7 +368,7 @@ export class InvoiceChecksService {
       severity: isWarning ? Severity.LOW : Severity.MEDIUM,
       expectedValue: `${fmtDate(expectedDueDate)} (${termsLabel} from receipt)`,
       actualValue: fmtDate(statedDueDate),
-      explanation: `Based on the email received date (${fmtDate(receivedDate)}) and the detected ${termsLabel} terms, the expected due date is ${fmtDate(expectedDueDate)}. The invoice lists ${fmtDate(statedDueDate)}, a ${diffLabel} discrepancy.`,
+      explanation: `Based on the email received date (${fmtDate(receivedDate)}) and the ${termsLabel} payment term, the expected due date is ${fmtDate(expectedDueDate)}. The invoice lists ${fmtDate(statedDueDate)}, a ${diffLabel} discrepancy.`,
       relatedFields: ["dueDate", "paymentTerms"],
       overpayImpact: 0,
       diffDays,

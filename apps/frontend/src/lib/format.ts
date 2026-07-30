@@ -31,6 +31,11 @@ export function fmtDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+export function fmtMonthLabel(label: string): string {
+  const [year, month] = label.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
 export function timeAgo(iso: string): string {
   const days = Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
   if (days <= 0) return "Today";

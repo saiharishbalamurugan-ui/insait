@@ -22,6 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
 function titleFor(pathname: string) {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
   if (pathname === "/invoices/upload") return "Upload Invoice";
+  if (pathname === "/invoices/bulk-upload") return "Bulk Upload";
   if (pathname.startsWith("/invoices/")) return "Invoice Detail";
   return APP_NAME;
 }

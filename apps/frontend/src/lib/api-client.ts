@@ -1,6 +1,12 @@
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const API_SHARED_SECRET = process.env.NEXT_PUBLIC_API_SHARED_SECRET;
 
+// Local-disk uploads come back as a relative "/uploads/..." path (served by the backend);
+// S3 uploads come back as an already-absolute URL. Only the former needs API_BASE_URL prepended.
+export function resolveFileUrl(fileUrl: string): string {
+  return fileUrl.startsWith("http://") || fileUrl.startsWith("https://") ? fileUrl : `${API_BASE_URL}${fileUrl}`;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

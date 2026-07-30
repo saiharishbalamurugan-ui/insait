@@ -1,20 +1,43 @@
 "use client";
 
-import { useState } from "react";
+// TODO(email-automation): Vendor invoices inbox — invoices arrive automatically from
+// connected vendor mailbox and are queued for AI review. Gated behind
+// FEATURES.emailInbox until that mailbox-connection automation is actually built;
+// this page and its nav entry are otherwise complete and ready to re-enable.
+
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Paperclip } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useInvoices } from "@/lib/hooks/use-invoices";
 import { initials, initialsColor, timeAgo } from "@/lib/format";
 import { StatusBadge, invoiceDisplayStatus } from "@/components/invoices/status-badge";
 import { cn } from "@/lib/utils";
+import { FEATURES } from "@/lib/feature-flags";
 
 export default function InboxPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const { data: invoices } = useInvoices({ search });
+
+  useEffect(() => {
+    if (!FEATURES.emailInbox) router.replace("/invoices");
+  }, [router]);
+
+  if (!FEATURES.emailInbox) {
+    return (
+      <>
+        <Topbar />
+        <PageContent>
+          <Card>
+            <CardContent className="py-16 text-center text-muted-foreground">Redirecting…</CardContent>
+          </Card>
+        </PageContent>
+      </>
+    );
+  }
 
   const list = (invoices ?? []).filter((i) => i.source === "EMAIL_INGESTION");
 

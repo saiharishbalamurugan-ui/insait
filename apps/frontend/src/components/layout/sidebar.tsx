@@ -15,16 +15,19 @@ import {
 import { useInvoices } from "@/lib/hooks/use-invoices";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/brand";
+import { FEATURES } from "@/lib/feature-flags";
 
-const NAV_ITEMS = [
+const ALL_NAV_ITEMS = [
   { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutGrid },
   { key: "invoices", href: "/invoices", label: "Invoices", icon: FileText },
-  { key: "inbox", href: "/inbox", label: "Email Inbox", icon: Mail },
+  { key: "inbox", href: "/inbox", label: "Email Inbox", icon: Mail, feature: "emailInbox" as const },
   { key: "roster", href: "/roster", label: "Consultant Roster", icon: Users },
   { key: "audit", href: "/audit", label: "AI Audit", icon: ShieldCheck },
   { key: "reports", href: "/reports", label: "Reports", icon: ClipboardList },
   { key: "settings", href: "/settings", label: "Settings", icon: Settings },
 ] as const;
+
+const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => !("feature" in item) || FEATURES[item.feature]);
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -36,8 +39,8 @@ export function Sidebar() {
   return (
     <aside className="w-[232px] shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0">
       <div className="px-5 py-[22px] pb-[18px]">
-        <div className="bg-white rounded-lg px-2.5 py-2 inline-block mb-2.5">
-          <Image src="/logo.jpg" alt="INSAIT Solutions" width={350} height={107} className="h-[26px] w-auto" priority />
+        <div className="bg-white rounded-lg px-3 py-2.5 inline-block mb-2.5">
+          <Image src="/logo.jpg" alt="INSAIT Solutions" width={350} height={107} className="h-11 w-auto" priority />
         </div>
         <div>
           <div className="font-display font-bold text-[17px] tracking-tight leading-none">{APP_NAME}</div>

@@ -6,21 +6,23 @@ import { ChevronRight } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { useInvoice } from "@/lib/hooks/use-invoice";
-import { initials, initialsColor, fmtDate } from "@/lib/format";
+import { initials, initialsColor, fmtDate, fmtMonthLabel } from "@/lib/format";
 import { StatusBadge, invoiceDisplayStatus } from "@/components/invoices/status-badge";
 import { AuditFlow } from "@/components/audit/audit-flow";
+import { useMonthContext } from "@/lib/hooks/use-month";
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: invoice } = useInvoice(id);
+  const { selectedMonth } = useMonthContext();
 
   return (
     <>
       <Topbar />
       <PageContent>
         <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground mb-3.5">
-          <Link href="/inbox" className="hover:text-primary">
-            Email Inbox
+          <Link href="/invoices" className="hover:text-primary">
+            Invoices{selectedMonth ? ` · ${fmtMonthLabel(selectedMonth)}` : ""}
           </Link>
           <ChevronRight className="size-3.5" />
           <span className="text-text-faint">{invoice?.invoiceNumber ?? "…"}</span>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, UploadCloud, Trash2, Lock } from "lucide-react";
+import { Search, UploadCloud, Trash2, Lock, Files } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
@@ -83,10 +83,19 @@ export default function InvoicesPage() {
               <div className="text-[12.5px] text-text-faint">{list.length} invoices</div>
             )}
             {isViewingCurrent ? (
-              <Link href="/invoices/upload" className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
-                <UploadCloud className="size-3.5" />
-                Upload Invoice
-              </Link>
+              <>
+                <Link
+                  href="/invoices/bulk-upload"
+                  className={cn(buttonVariants({ size: "sm", variant: "outline" }), "gap-1.5")}
+                >
+                  <Files className="size-3.5" />
+                  Bulk Upload
+                </Link>
+                <Link href="/invoices/upload" className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+                  <UploadCloud className="size-3.5" />
+                  Upload Invoice
+                </Link>
+              </>
             ) : (
               <div className="flex items-center gap-1.5 text-[12px] text-text-faint px-2">
                 <Lock className="size-3.5" /> Read-only history

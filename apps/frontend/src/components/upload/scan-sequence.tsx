@@ -4,7 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Check, X, MinusCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { CheckResult, ExtractedInvoiceData } from "@/lib/types";
-import { API_BASE_URL } from "@/lib/api-client";
+import { resolveFileUrl } from "@/lib/api-client";
 
 // react-pdf touches browser-only APIs (DOMMatrix, Canvas) at module-evaluation time,
 // which crashes Next.js's build-time prerendering unless this stays client-only.
@@ -26,7 +26,7 @@ export function ScanSequence({
   return (
     <div className="grid grid-cols-[620px_1fr] gap-6 items-start">
       <AnnotatedInvoiceViewer
-        fileUrl={`${API_BASE_URL}${data.fileUrl}`}
+        fileUrl={resolveFileUrl(data.fileUrl)}
         mimeType={data.mimeType}
         fieldPositions={data.fieldPositions}
         checks={checks}

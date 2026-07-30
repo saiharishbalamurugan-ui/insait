@@ -13,11 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useMonthContext, useCreateMonth, useClearMonthData } from "@/lib/hooks/use-month";
-
-function formatLabel(label: string) {
-  const [year, month] = label.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-}
+import { fmtMonthLabel as formatLabel } from "@/lib/format";
 
 export function MonthSelector() {
   const { selectedMonth, setSelectedMonth, isViewingCurrent, months } = useMonthContext();

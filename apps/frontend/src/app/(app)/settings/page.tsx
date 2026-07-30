@@ -6,11 +6,11 @@ import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { money } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const INTEGRATIONS = [
   { name: "QuickBooks Online", desc: "Approved timesheets & payroll sync", status: "Connected", icon: Database },
-  { name: "Vendor Email Inbox", desc: "invoices@company-ap.com", status: "Connected", icon: Mail },
+  { name: "Vendor Email Inbox", desc: "Automatic mailbox ingestion — not yet built", status: "Planned", icon: Mail },
   { name: "Slack Notifications", desc: "#finance-alerts channel", status: "Connected", icon: Bell },
 ];
 
@@ -62,8 +62,13 @@ export default function SettingsPage() {
                     <div className="font-semibold text-[13.5px]">{i.name}</div>
                     <div className="text-[12px] text-text-faint">{i.desc}</div>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-[3px] rounded-full bg-success-soft text-success">
-                    <span className="size-1.5 rounded-full bg-success" />
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-[3px] rounded-full",
+                      i.status === "Connected" ? "bg-success-soft text-success" : "bg-secondary text-text-faint",
+                    )}
+                  >
+                    <span className={cn("size-1.5 rounded-full", i.status === "Connected" ? "bg-success" : "bg-text-faint")} />
                     {i.status}
                   </span>
                 </div>
@@ -73,12 +78,20 @@ export default function SettingsPage() {
 
           <Card>
             <CardContent className="p-5">
-              <div className="font-display font-semibold text-[15.5px]">Audit Thresholds</div>
-              <div className="text-[12.5px] text-muted-foreground mb-3">Risk scoring rules applied to every invoice.</div>
+              <div className="font-display font-semibold text-[15.5px]">How Risk Scoring Works</div>
+              <div className="text-[12.5px] text-muted-foreground mb-3">
+                Every discrepancy is flagged, no matter how small — 0.5 hours or $1 off still gets caught. The risk
+                score ranks how much attention a flagged invoice needs; it doesn't decide whether something gets
+                flagged in the first place.
+              </div>
               <div className="flex flex-col gap-2.5">
-                <ThresholdRow label="Flag when hours variance exceeds" value="2 hrs" />
-                <ThresholdRow label="High-risk overpayment threshold" value={money(1500)} />
-                <ThresholdRow label="Auto-hold payment on High Risk" value="Enabled" />
+                <ThresholdRow label="0–19" value="Approved" tone="success" />
+                <ThresholdRow label="20–74" value="Flagged" tone="warning" />
+                <ThresholdRow label="75–99" value="High Risk" tone="danger" />
+              </div>
+              <div className="text-[11.5px] text-text-faint mt-3">
+                Score = sum of severity weights across every flagged check (Critical 40 · High 25 · Medium 15 · Low
+                8), capped at 99.
               </div>
             </CardContent>
           </Card>
@@ -104,11 +117,20 @@ export default function SettingsPage() {
   );
 }
 
-function ThresholdRow({ label, value }: { label: string; value: string }) {
+function ThresholdRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "success" | "warning" | "danger";
+}) {
+  const toneClass = tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-danger";
   return (
     <div className="flex justify-between text-[13px] px-3 py-2 bg-secondary rounded-lg">
-      <span>{label}</span>
-      <span className="font-mono font-semibold">{value}</span>
+      <span className="font-mono">{label}</span>
+      <span className={`font-semibold ${toneClass}`}>{value}</span>
     </div>
   );
 }

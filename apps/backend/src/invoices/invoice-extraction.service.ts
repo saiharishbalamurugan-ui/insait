@@ -1,11 +1,8 @@
 import { BadRequestException, Injectable, ServiceUnavailableException } from "@nestjs/common";
 import Anthropic from "@anthropic-ai/sdk";
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
+import { FileStorageService } from "../common/file-storage.service";
 
 const CLAUDE_MODEL = "claude-opus-4-8";
-const UPLOAD_DIR = join(process.cwd(), "uploads");
 
 const SUPPORTED_MIME_TYPES: Record<string, string> = {
   "application/pdf": "pdf",
@@ -122,6 +119,8 @@ export interface ExtractedInvoiceData {
 
 @Injectable()
 export class InvoiceExtractionService {
+  constructor(private readonly fileStorage: FileStorageService) {}
+
   isAvailable() {
     return Boolean(process.env.ANTHROPIC_API_KEY);
   }
@@ -138,7 +137,7 @@ export class InvoiceExtractionService {
       throw new BadRequestException(`Unsupported file type "${file.mimetype}". Upload a PDF, PNG, JPEG, or WebP.`);
     }
 
-    const fileUrl = await this.storeFile(file, extension);
+    const fileUrl = await this.fileStorage.store(file.buffer, extension, file.mimetype);
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const base64 = file.buffer.toString("base64");
@@ -179,10 +178,4 @@ export class InvoiceExtractionService {
     return { ...parsed, fileUrl, mimeType: file.mimetype };
   }
 
-  private async storeFile(file: Express.Multer.File, extension: string): Promise<string> {
-    await mkdir(UPLOAD_DIR, { recursive: true });
-    const filename = `${randomUUID()}.${extension}`;
-    await writeFile(join(UPLOAD_DIR, filename), file.buffer);
-    return `/uploads/${filename}`;
-  }
 }

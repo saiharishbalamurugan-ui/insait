@@ -10,13 +10,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardStats } from "@/lib/hooks/use-dashboard";
 import { useInvoices } from "@/lib/hooks/use-invoices";
-import { money, pct, initials, initialsColor } from "@/lib/format";
+import { money, pct, initials, initialsColor, fmtMonthLabel } from "@/lib/format";
 import { StatusBadge } from "@/components/invoices/status-badge";
+import { InfoTooltip } from "@/components/shared/info-tooltip";
+import { useMonthContext } from "@/lib/hooks/use-month";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { data: stats, isLoading } = useDashboardStats();
   const { data: invoices } = useInvoices();
+  const { selectedMonth } = useMonthContext();
+  const monthLabel = selectedMonth ? fmtMonthLabel(selectedMonth) : "the selected month";
 
   const needsAttention = (invoices ?? [])
     .filter((i) => i.riskLabel === "Flagged" || i.riskLabel === "High Risk")
@@ -25,8 +29,24 @@ export default function DashboardPage() {
 
   const kpis = stats
     ? [
-        { label: "Invoices Processed", value: String(stats.total), sub: `across the portfolio`, icon: FileText, color: "text-indigo", bg: "bg-indigo-soft" },
-        { label: "Total Invoice Value", value: money(stats.totalValue), sub: "all invoices", icon: Database, color: "text-primary", bg: "bg-brand-soft" },
+        {
+          label: "Invoices Processed",
+          value: String(stats.total),
+          sub: `across the portfolio`,
+          icon: FileText,
+          color: "text-indigo",
+          bg: "bg-indigo-soft",
+          tooltip: `Every invoice uploaded and saved in ${monthLabel} — bulk uploads count individually.`,
+        },
+        {
+          label: "Total Invoice Value",
+          value: money(stats.totalValue),
+          sub: "all invoices",
+          icon: Database,
+          color: "text-primary",
+          bg: "bg-brand-soft",
+          tooltip: `Combined dollar amount across every invoice in ${monthLabel}, regardless of status.`,
+        },
         {
           label: "Approved",
           value: String(stats.approved),
@@ -34,10 +54,35 @@ export default function DashboardPage() {
           icon: CheckCircle2,
           color: "text-success",
           bg: "bg-success-soft",
+          tooltip: `Invoices in ${monthLabel} with a risk score under 20 — no or trivial discrepancies found.`,
         },
-        { label: "Flagged", value: String(stats.flagged), sub: "needs vendor follow-up", icon: AlertTriangle, color: "text-warning", bg: "bg-warning-soft" },
-        { label: "High Risk", value: String(stats.highRisk), sub: "hold payment recommended", icon: ShieldAlert, color: "text-danger", bg: "bg-danger-soft" },
-        { label: "Est. Savings", value: money(stats.savings), sub: "overpayments prevented", icon: Sparkles, color: "text-primary", bg: "bg-brand-soft" },
+        {
+          label: "Flagged",
+          value: String(stats.flagged),
+          sub: "needs vendor follow-up",
+          icon: AlertTriangle,
+          color: "text-warning",
+          bg: "bg-warning-soft",
+          tooltip: `Invoices in ${monthLabel} with a risk score of 20–74 — real discrepancies worth reviewing before payment.`,
+        },
+        {
+          label: "High Risk",
+          value: String(stats.highRisk),
+          sub: "hold payment recommended",
+          icon: ShieldAlert,
+          color: "text-danger",
+          bg: "bg-danger-soft",
+          tooltip: `Invoices in ${monthLabel} with a risk score of 75+ — severe or multiple discrepancies. Worth holding payment for review.`,
+        },
+        {
+          label: "Est. Savings",
+          value: money(stats.savings),
+          sub: "overpayments prevented",
+          icon: Sparkles,
+          color: "text-primary",
+          bg: "bg-brand-soft",
+          tooltip: `Sum of the estimated overpayment on every Flagged and High Risk invoice in ${monthLabel} — the money these checks caught before payment went out.`,
+        },
       ]
     : [];
 
@@ -53,7 +98,10 @@ export default function DashboardPage() {
                   <CardContent className="p-[20px_22px]">
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="text-muted-foreground text-[12px] font-semibold">{k.label}</div>
+                        <div className="text-muted-foreground text-[12px] font-semibold flex items-center gap-1">
+                          {k.label}
+                          <InfoTooltip text={k.tooltip} />
+                        </div>
                         <div className="font-display text-[26px] font-bold mt-1.5">{k.value}</div>
                       </div>
                       <div className={`size-[34px] rounded-[9px] flex items-center justify-center ${k.bg} ${k.color}`}>
@@ -69,14 +117,20 @@ export default function DashboardPage() {
         <div className="grid grid-cols-[1.4fr_1fr] gap-[18px] mb-[18px]">
           <Card>
             <CardContent className="p-[20px_22px]">
-              <div className="font-display font-semibold text-[15.5px]">Invoice Volume</div>
+              <div className="font-display font-semibold text-[15.5px] flex items-center gap-1">
+                Invoice Volume
+                <InfoTooltip text="Invoices grouped by the workspace month they were uploaded into — the same month shown in the selector above, not the date printed on the invoice." />
+              </div>
               <div className="text-[12.5px] text-muted-foreground mb-4">Monthly invoices received, last 6 months</div>
               {stats && <VolumeChart data={stats.monthlyVolume} />}
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-[20px_22px]">
-              <div className="font-display font-semibold text-[15.5px]">Risk Distribution</div>
+              <div className="font-display font-semibold text-[15.5px] flex items-center gap-1">
+                Risk Distribution
+                <InfoTooltip text={`How ${monthLabel}'s invoices break down by risk score: Approved (0–19), Flagged (20–74), High Risk (75+).`} />
+              </div>
               <div className="text-[12.5px] text-muted-foreground mb-4">Current portfolio breakdown</div>
               {stats && <RiskDonut approved={stats.approved} flagged={stats.flagged} highRisk={stats.highRisk} />}
             </CardContent>

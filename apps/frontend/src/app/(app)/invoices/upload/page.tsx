@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { UploadCloud, FileText, Loader2, Sparkles, AlertTriangle, Users, ArrowRight, Lock } from "lucide-react";
+import { UploadCloud, FileText, Loader2, Sparkles, AlertTriangle, Users, ArrowRight, Lock, Files } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
@@ -221,6 +221,25 @@ export default function UploadInvoicePage() {
                 </CardContent>
               </Card>
             </div>
+
+            <Link href="/invoices/bulk-upload" className="block">
+              <Card className="transition-colors hover:border-primary cursor-pointer">
+                <CardContent className="p-5 flex items-center gap-4">
+                  <div className="size-11 rounded-2xl bg-secondary text-muted-foreground flex items-center justify-center shrink-0">
+                    <Files className="size-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-[14.5px] mb-0.5 flex items-center gap-1.5">
+                      Bulk Upload <ArrowRight className="size-3.5" />
+                    </div>
+                    <div className="text-[12.5px] text-muted-foreground leading-relaxed">
+                      Got a batch of invoices? Upload up to 25 at once — each one is read, checked, and saved on its
+                      own, so one bad file won't hold up the rest.
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
           </>
         )}
 

@@ -61,7 +61,6 @@ export async function downloadAuditReportPDF(invoice: InvoiceDetail) {
   }
 
   const report = invoice.latestReport;
-  const isClean = !report?.findings.length;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(12);
@@ -75,7 +74,7 @@ export async function downloadAuditReportPDF(invoice: InvoiceDetail) {
     doc.text("Detected Discrepancies", margin, y);
     y += 18;
     for (const f of report.findings) {
-      wrapText(`${f.discrepancyType.replace(/_/g, " ")}: ${f.explanation}`);
+      wrapText(`${f.discrepancyType.replace(/_/g, " ")}: ${f.explanation} This needs to be fixed.`);
     }
   }
 
@@ -88,19 +87,7 @@ export async function downloadAuditReportPDF(invoice: InvoiceDetail) {
       `${invoice.matchedTimesheet.hours} hrs @ $${invoice.matchedTimesheet.hourlyRate}/hr = ${money(invoice.matchedTimesheet.hours * invoice.matchedTimesheet.hourlyRate)}`,
     );
   }
-  field("Risk Score", `${invoice.riskScore ?? "—"} / 100  (${invoice.riskLabel ?? "Not audited"})`);
   field("Estimated Overpayment", money(invoice.overpay));
-  if (invoice.confidence !== null) field("Match Confidence", `${invoice.confidence.toFixed(1)}%`);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Reviewer Notes", margin, y);
-  y += 18;
-  wrapText(
-    isClean
-      ? "No reviewer action required. Cleared for standard payment processing."
-      : "Flagged by Audix's audit engine for finance review prior to payment release.",
-  );
 
   doc.setFontSize(9);
   doc.setTextColor(150);
