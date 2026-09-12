@@ -23,6 +23,7 @@ model Organization {
   quickbooksConnection QuickBooksConnection?
   emailIngestionLogs   EmailIngestionLog[]
   chatSessions         ChatSession[]
+  invoiceDeletionLogs  InvoiceDeletionLog[]
 }
 
 // ── Monthly workspaces ──────────────────────────────────────────────────
@@ -44,21 +45,36 @@ model Month {
 
 enum UserRole {
   ADMIN
-  MEMBER
+  REVIEWER
+}
+
+enum UserStatus {
+  INVITED // created by an Admin, hasn't set a password yet — can't log in
+  ACTIVE
+  DEACTIVATED // not hard-deleted, so historical actions stay attributable
 }
 
 model User {
   id             String       @id @default(cuid())
   email          String       @unique
-  passwordHash   String
+  passwordHash   String? // null while status = INVITED
   name           String
-  role           UserRole     @default(MEMBER)
+  role           UserRole     @default(REVIEWER)
+  status         UserStatus   @default(ACTIVE)
+  lastLoginAt    DateTime?
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  chatSessions ChatSession[]
+  // Only set while status = INVITED. Stores a hash, never the raw token — same reason
+  // passwords are hashed, so a DB leak alone can't be used to accept someone else's invite.
+  inviteTokenHash String?   @unique
+  inviteExpiresAt DateTime?
+
+  chatSessions        ChatSession[]
+  approvalLogs         ApprovalLog[]
+  invoiceDeletionLogs  InvoiceDeletionLog[]
 }
 
 // ── QuickBooks Online integration (Phase 3) ────────────────────────────
@@ -102,7 +118,13 @@ model Invoice {
   issueDate     DateTime
   dueDate       DateTime?
   source        InvoiceSource @default(MANUAL_UPLOAD)
-  status        InvoiceStatus @default(PENDING)
+  status        InvoiceStatus @default(PENDING) // audit pipeline stage — not the human approval decision
+
+  // Human approval decision — separate from `status` above (pipeline stage) and from the AI's
+  // own risk label (Approved/Flagged/High Risk), which is a different concept that happens to
+  // share the word "Approved". This field is the single source of truth for approve/reject UI.
+  approvalStatus ApprovalStatus @default(PENDING_APPROVAL)
+  approvalLogs   ApprovalLog[]
 
   month String // "YYYY-MM" — the month this invoice was uploaded into, set once at creation
 
@@ -128,16 +150,68 @@ model Invoice {
 
   @@index([organizationId])
   @@index([organizationId, month])
+  @@index([organizationId, month, approvalStatus])
+}
+
+enum ApprovalStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum ApprovalAction {
+  APPROVED
+  REJECTED
+}
+
+// Audit trail for approve/reject decisions — separate from the single reviewAction/reviewedAt
+// fields on AuditReport, which only ever hold the *latest* decision. This keeps history.
+model ApprovalLog {
+  id        String         @id @default(cuid())
+  invoiceId String
+  invoice   Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  action      ApprovalAction
+  actorUserId String? // nullable: SetNull on user removal, and null for pre-auth rows logged with only a free-text name
+  actorUser   User?          @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorName   String? // denormalized display name — real user's name once logged in, or a legacy free-text session label
+  notes       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+}
+
+// Deliberately NOT an FK relation to Invoice — a cascade delete would wipe this exact record
+// the moment the invoice it documents is removed, defeating the point of a deletion log.
+model InvoiceDeletionLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  invoiceId     String
+  invoiceNumber String
+  vendorName    String
+  month         String
+
+  actorUserId String?
+  actorUser   User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorName   String?
+
+  deletedAt DateTime @default(now())
+
+  @@index([organizationId])
 }
 
 model InvoiceLineItem {
-  id          String  @id @default(cuid())
-  invoiceId   String
-  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  description String
-  quantity    Decimal @db.Decimal(12, 2)
-  rate        Decimal @db.Decimal(12, 2)
-  amount      Decimal @db.Decimal(12, 2)
+  id             String  @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  consultantName String? // who this specific line item bills — an invoice can bill more than one consultant across its line items
+  description    String
+  quantity       Decimal? @db.Decimal(12, 2) // null, not 0, when the invoice's quantity isn't genuinely hours (e.g. a flat monthly fee)
+  rate           Decimal? @db.Decimal(12, 2) // null, not 0, when there's no true per-hour rate to report
+  amount         Decimal  @db.Decimal(12, 2)
 }
 
 // ── Approved hours roster (manually uploaded until Ceipal is connected) ──
@@ -154,7 +228,10 @@ model Timesheet {
   weekEnd      DateTime?
   country      String    @default("US")
   hours        Decimal  @db.Decimal(6, 2)
-  hourlyRate   Decimal  @db.Decimal(12, 2)
+  hourlyRate   Decimal  @db.Decimal(12, 2) // pay rate — what's paid to the consultant/vendor
+  billRate     Decimal? @db.Decimal(12, 2) // what's billed to the end client — not every sheet has this
+  vendor       String? // the staffing vendor/agency — kept as its own field so invoice-to-roster
+                        // matching can check it, not just folded into `project` as a fallback
   project      String?
   managerName  String?
 

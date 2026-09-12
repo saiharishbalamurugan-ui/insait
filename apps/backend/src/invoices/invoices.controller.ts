@@ -1,7 +1,18 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { InvoicesService } from "./invoices.service";
-import { InvoiceExtractionService } from "./invoice-extraction.service";
+import { InvoiceExtractionService, ExtractedLineItem } from "./invoice-extraction.service";
 import { InvoiceChecksService } from "./invoice-checks.service";
 import { MonthsService } from "../months/months.service";
 
@@ -25,6 +36,7 @@ interface CreateInvoiceBody {
   uploadedAt: string;
   receivedDate: string;
   extractedData: unknown;
+  lineItems?: ExtractedLineItem[];
 }
 
 interface RecomputeChecksBody {
@@ -41,6 +53,7 @@ interface RecomputeChecksBody {
   periodEnd: string | null;
   paymentTermsLabel: string | null;
   paymentTermsDays: number | null;
+  lineItems?: ExtractedLineItem[];
   fieldPositions: unknown;
   fileUrl: string;
   mimeType: string;
@@ -88,6 +101,7 @@ export class InvoicesController {
         periodEnd: body.periodEnd,
         paymentTermsLabel: body.paymentTermsLabel,
         paymentTermsDays: body.paymentTermsDays,
+        lineItems: body.lineItems ?? [],
         fieldPositions: (body.fieldPositions as never) ?? [],
         fileUrl: body.fileUrl,
         mimeType: body.mimeType,
@@ -100,8 +114,18 @@ export class InvoicesController {
   }
 
   @Get()
-  findAll(@Query("status") status?: string, @Query("search") search?: string, @Query("month") month?: string) {
-    return this.invoicesService.findAll({ status, search, month });
+  findAll(
+    @Query("status") status?: string,
+    @Query("approvalStatus") approvalStatus?: string,
+    @Query("search") search?: string,
+    @Query("month") month?: string,
+  ) {
+    return this.invoicesService.findAll({ status, approvalStatus, search, month });
+  }
+
+  @Get("approval-counts")
+  approvalCounts(@Query("month") month?: string) {
+    return this.invoicesService.approvalCounts(month);
   }
 
   @Post()
@@ -123,5 +147,14 @@ export class InvoicesController {
   @Post(":id/audit")
   triggerAudit(@Param("id") id: string) {
     return this.invoicesService.triggerAudit(id);
+  }
+
+  @Delete(":id")
+  deleteOne(
+    @Param("id") id: string,
+    @Query("actorName") actorName?: string,
+    @Query("actorUserId") actorUserId?: string,
+  ) {
+    return this.invoicesService.deleteOne(id, actorName, actorUserId);
   }
 }

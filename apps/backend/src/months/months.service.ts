@@ -43,20 +43,22 @@ export class MonthsService {
     });
   }
 
-  async createNext() {
-    const current = await this.current();
-    const label = nextLabel(current.label);
+  async createMonth(label?: string) {
+    const targetLabel = label ?? nextLabel((await this.current()).label);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(targetLabel)) {
+      throw new BadRequestException("Month must be in YYYY-MM format.");
+    }
 
     const existing = await this.prisma.month.findUnique({
-      where: { organizationId_label: { organizationId: DEMO_ORG_ID, label } },
+      where: { organizationId_label: { organizationId: DEMO_ORG_ID, label: targetLabel } },
     });
     if (existing) {
-      throw new BadRequestException(`${label} already exists — switch to it instead of creating it again.`);
+      throw new BadRequestException(`${targetLabel} already exists — switch to it instead of creating it again.`);
     }
 
     const [, created] = await this.prisma.$transaction([
       this.prisma.month.updateMany({ where: { organizationId: DEMO_ORG_ID }, data: { isCurrent: false } }),
-      this.prisma.month.create({ data: { organizationId: DEMO_ORG_ID, label, isCurrent: true } }),
+      this.prisma.month.create({ data: { organizationId: DEMO_ORG_ID, label: targetLabel, isCurrent: true } }),
     ]);
     return created;
   }
@@ -76,6 +78,35 @@ export class MonthsService {
     ]);
 
     return { clearedInvoices: deletedInvoices.count, clearedRosterRows: deletedRoster.count };
+  }
+
+  async deleteMonth(label: string) {
+    const month = await this.prisma.month.findUnique({
+      where: { organizationId_label: { organizationId: DEMO_ORG_ID, label } },
+    });
+    if (!month) throw new BadRequestException("No such month.");
+
+    const [deletedInvoices, deletedRoster] = await this.prisma.$transaction([
+      this.prisma.invoice.deleteMany({ where: { organizationId: DEMO_ORG_ID, month: label } }),
+      this.prisma.timesheet.deleteMany({ where: { organizationId: DEMO_ORG_ID, month: label } }),
+    ]);
+    await this.prisma.month.delete({ where: { id: month.id } });
+
+    // Deleting the current month leaves nothing editable — promote whatever's left (most
+    // recent by label) to current so there's always exactly one, same invariant createMonth keeps.
+    let newCurrentLabel: string | null = null;
+    if (month.isCurrent) {
+      const promoted = await this.prisma.month.findFirst({
+        where: { organizationId: DEMO_ORG_ID },
+        orderBy: { label: "desc" },
+      });
+      if (promoted) {
+        await this.prisma.month.update({ where: { id: promoted.id }, data: { isCurrent: true } });
+        newCurrentLabel = promoted.label;
+      }
+    }
+
+    return { deletedInvoices: deletedInvoices.count, deletedRosterRows: deletedRoster.count, newCurrentLabel };
   }
 
   async assertCurrent(month: string) {

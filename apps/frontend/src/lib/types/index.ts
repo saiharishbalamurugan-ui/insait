@@ -1,5 +1,6 @@
 export type RiskLabel = "Approved" | "Flagged" | "High Risk";
 export type InvoiceStatus = "PENDING" | "PROCESSING" | "AUDITED" | "FAILED";
+export type ApprovalStatus = "PENDING_APPROVAL" | "APPROVED" | "REJECTED";
 
 export interface InvoiceListItem {
   id: string;
@@ -19,13 +20,15 @@ export interface InvoiceListItem {
   overpay: number;
   source: "MANUAL_UPLOAD" | "EMAIL_INGESTION";
   month: string;
+  approvalStatus: ApprovalStatus;
 }
 
 export interface InvoiceLineItem {
   id: string;
+  consultantName: string | null;
   description: string;
-  quantity: number;
-  rate: number;
+  quantity: number | null;
+  rate: number | null;
   amount: number;
 }
 
@@ -90,7 +93,16 @@ export interface DashboardStats {
   flagged: number;
   highRisk: number;
   savings: number;
+  pendingApproval: number;
+  rejected: number;
+  lowRisk: number;
   monthlyVolume: { label: string; value: number }[];
+}
+
+export interface ApprovalCounts {
+  pendingApproval: number;
+  approved: number;
+  rejected: number;
 }
 
 export interface TimesheetItem {
@@ -168,6 +180,14 @@ export interface CheckResult {
   diffDays?: number | null;
 }
 
+export interface ExtractedLineItem {
+  consultantName: string | null;
+  description: string;
+  hours: number | null;
+  hourlyRate: number | null;
+  amount: number;
+}
+
 export interface ExtractedInvoiceData {
   vendorName: string;
   invoiceNumber: string;
@@ -182,6 +202,7 @@ export interface ExtractedInvoiceData {
   periodEnd: string | null;
   paymentTermsLabel: string | null;
   paymentTermsDays: number | null;
+  lineItems?: ExtractedLineItem[];
   fieldPositions: FieldPosition[];
   fileUrl: string;
   mimeType: string;
@@ -208,6 +229,7 @@ export interface CreateInvoicePayload {
   uploadedAt: string;
   receivedDate: string;
   extractedData: unknown;
+  lineItems?: ExtractedLineItem[];
 }
 
 export interface RosterEntry {
@@ -215,6 +237,7 @@ export interface RosterEntry {
   employeeName: string;
   hours: number;
   hourlyRate: number;
+  billRate: number | null;
   country: string;
   weekStart: string | null;
   weekEnd: string | null;

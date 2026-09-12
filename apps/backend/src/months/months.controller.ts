@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post } from "@nestjs/common";
 import { MonthsService } from "./months.service";
 
 @Controller("months")
@@ -16,12 +16,17 @@ export class MonthsController {
   }
 
   @Post()
-  createNext() {
-    return this.monthsService.createNext();
+  createMonth(@Body("label") label?: string) {
+    return this.monthsService.createMonth(label);
   }
 
   @Delete(":label/data")
   clearData(@Param("label") label: string) {
     return this.monthsService.clearData(label);
+  }
+
+  @Delete(":label")
+  deleteMonth(@Param("label") label: string) {
+    return this.monthsService.deleteMonth(label);
   }
 }

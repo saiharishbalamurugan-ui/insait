@@ -1,3 +1,5 @@
+import { getSessionToken } from "@/lib/session-token";
+
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const API_SHARED_SECRET = process.env.NEXT_PUBLIC_API_SHARED_SECRET;
 
@@ -18,11 +20,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const sessionToken = getSessionToken();
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       ...(API_SHARED_SECRET ? { "x-app-secret": API_SHARED_SECRET } : {}),
+      ...(sessionToken ? { "x-session-token": sessionToken } : {}),
       ...options.headers,
     },
     credentials: "include",
@@ -38,10 +42,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 async function requestFormData<T>(path: string, formData: FormData): Promise<T> {
+  const sessionToken = getSessionToken();
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     body: formData,
-    headers: API_SHARED_SECRET ? { "x-app-secret": API_SHARED_SECRET } : undefined,
+    headers: {
+      ...(API_SHARED_SECRET ? { "x-app-secret": API_SHARED_SECRET } : {}),
+      ...(sessionToken ? { "x-session-token": sessionToken } : {}),
+    },
     credentials: "include",
   });
 

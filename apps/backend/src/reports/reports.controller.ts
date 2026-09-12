@@ -11,7 +11,13 @@ export class ReportsController {
   }
 
   @Post(":id/action")
-  setAction(@Param("id") id: string, @Body("action") action: string) {
-    return this.reportsService.setReviewAction(id, action);
+  setAction(
+    @Param("id") id: string,
+    @Body("action") action: string,
+    @Body("actorName") actorName?: string,
+    @Body("notes") notes?: string,
+    @Body("actorUserId") actorUserId?: string,
+  ) {
+    return this.reportsService.setReviewAction(id, action, actorName, notes, actorUserId);
   }
 }

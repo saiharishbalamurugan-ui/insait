@@ -13,6 +13,8 @@ import {
   Settings,
 } from "lucide-react";
 import { useInvoices } from "@/lib/hooks/use-invoices";
+import { useSession, useLogout } from "@/lib/hooks/use-session";
+import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/brand";
 import { FEATURES } from "@/lib/feature-flags";
@@ -32,6 +34,9 @@ const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => !("feature" in item) || FEATURE
 export function Sidebar() {
   const pathname = usePathname();
   const { data: invoices } = useInvoices();
+  const { data: session } = useSession();
+  const logout = useLogout();
+  const user = session?.user;
 
   const inboxCount = invoices?.filter((i) => i.status === "PENDING" || i.status === "PROCESSING").length ?? 0;
   const auditCount = invoices?.filter((i) => i.riskLabel === "Flagged" || i.riskLabel === "High Risk").length ?? 0;
@@ -86,19 +91,13 @@ export function Sidebar() {
 
       <div className="mt-auto p-3.5 border-t border-sidebar-border flex items-center gap-2.5">
         <div className="size-[30px] rounded-full bg-gradient-to-br from-indigo to-primary text-white flex items-center justify-center text-[12px] font-semibold shrink-0">
-          JM
+          {user ? initials(user.name) : "—"}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[12.5px] font-semibold leading-tight">Jordan Meyers</div>
-          <div className="text-[11px] text-text-faint leading-tight">AP Finance Lead</div>
+          <div className="text-[12.5px] font-semibold leading-tight truncate">{user?.name ?? "…"}</div>
+          <div className="text-[11px] text-text-faint leading-tight">{user?.role === "ADMIN" ? "Admin" : "Reviewer"}</div>
         </div>
-        <button
-          onClick={async () => {
-            await fetch("/api/logout", { method: "POST" });
-            window.location.href = "/login";
-          }}
-          className="text-[11px] text-text-faint hover:text-foreground shrink-0"
-        >
+        <button onClick={() => logout()} className="text-[11px] text-text-faint hover:text-foreground shrink-0">
           Log out
         </button>
       </div>

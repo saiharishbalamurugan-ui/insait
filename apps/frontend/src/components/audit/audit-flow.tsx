@@ -2,20 +2,24 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle, Lock, AlertTriangle } from "lucide-react";
+import { Check, Wand2, Download, Sparkles, X, Mail, MinusCircle, Lock, AlertTriangle, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useInvoice, useTriggerAudit } from "@/lib/hooks/use-invoice";
 import { useReportAction } from "@/lib/hooks/use-reports";
+import { useApprovalQueue } from "@/lib/hooks/use-invoices";
 import { useMonthContext } from "@/lib/hooks/use-month";
+import { useSession } from "@/lib/hooks/use-session";
 import { money, fmtDate } from "@/lib/format";
 import { StatusBadge } from "@/components/invoices/status-badge";
 import { ConfidenceRing } from "@/components/audit/confidence-ring";
 import { downloadAuditReportPDF } from "@/lib/pdf";
 import { resolveFileUrl } from "@/lib/api-client";
 import { InfoTooltip } from "@/components/shared/info-tooltip";
+import { ApprovalStatus } from "@/lib/types";
 
 // react-pdf touches browser-only APIs (DOMMatrix, Canvas) at module-evaluation time,
 // which crashes Next.js's build-time prerendering unless this stays client-only.
@@ -159,8 +163,12 @@ export function AuditFlow({ invoiceId }: { invoiceId: string }) {
 }
 
 function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useInvoice>["data"]> }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromTab = searchParams.get("from") as ApprovalStatus | null;
   const reportAction = useReportAction();
   const { currentMonthLabel } = useMonthContext();
+  const { data: session } = useSession();
   const isHistorical = currentMonthLabel !== null && invoice.month !== currentMonthLabel;
   const report = invoice.latestReport;
   const ts = invoice.matchedTimesheet;
@@ -171,6 +179,29 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
   const isClean = !report?.findings.length;
   const action = report?.reviewAction ?? null;
 
+  // "Next Invoice" only appears when we know which tab the reviewer came from — fetches the
+  // exact same filtered queue so "next" means the same thing it did on the list page.
+  const { data: queue } = useApprovalQueue(fromTab);
+  const queueIndex = fromTab && queue ? queue.findIndex((i) => i.id === invoice.id) : -1;
+  const nextInvoice = fromTab && queue && queueIndex >= 0 ? queue[queueIndex + 1] : undefined;
+
+  function runAction(actionType: "APPROVED" | "REJECTED", successMsg: string) {
+    if (!report || !session?.user) return;
+    reportAction.mutate(
+      { reportId: report.id, action: actionType, actorName: session.user.name, actorUserId: session.user.id },
+      { onSuccess: () => toast.success(successMsg) },
+    );
+  }
+
+  // An invoice billing more than one consultant has no single "the roster hours" to compare
+  // against — .find() on APPROVED_HOURS would silently grab whichever consultant's check
+  // happened to run first and compare the invoice's *summed* total against just their hours.
+  // Render a per-consultant breakdown instead once there's more than one to show.
+  const lineItemConsultants = Array.from(
+    new Set((invoice.lineItems ?? []).map((li) => li.consultantName).filter((n): n is string => !!n)),
+  );
+  const isMultiConsultant = lineItemConsultants.length > 1;
+
   const hoursCheck = checks?.find((c) => c.rule === "APPROVED_HOURS");
   const rateCheck = checks?.find((c) => c.rule === "BILLING_RATE");
   const rosterHoursMatch = hoursCheck?.expectedValue?.match(/[\d.]+/)?.[0];
@@ -180,12 +211,33 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
   const rosterAmount = rosterHours !== null ? rosterHours * rosterRate : null;
   const hasRosterEntry = checks ? hoursCheck?.discrepancyType !== "MISSING_TIMESHEET" : !!ts;
 
+  function checkFor(rule: "APPROVED_HOURS" | "BILLING_RATE", name: string) {
+    return checks?.find((c) => c.rule === rule && c.label.endsWith(`— ${name}`));
+  }
+  const perConsultantRows = lineItemConsultants.map((name) => {
+    const li = invoice.lineItems.find((l) => l.consultantName === name);
+    const hCheck = checkFor("APPROVED_HOURS", name);
+    const rCheck = checkFor("BILLING_RATE", name);
+    const matched = hCheck?.discrepancyType !== "MISSING_TIMESHEET";
+    const approvedHoursMatch = matched ? hCheck?.expectedValue?.match(/[\d.]+/)?.[0] : null;
+    const approvedRateMatch = matched ? rCheck?.expectedValue?.match(/[\d.]+/)?.[0] : null;
+    return {
+      name,
+      invoiceHours: li?.quantity ?? null,
+      invoiceRate: li?.rate ?? null,
+      matched,
+      approvedHours: approvedHoursMatch ? Number(approvedHoursMatch) : null,
+      approvedRate: approvedRateMatch ? Number(approvedRateMatch) : null,
+      flagged: hCheck?.status === "flagged" || rCheck?.status === "flagged",
+    };
+  });
+
   const extractedFields: [string, string][] = [
     ["Vendor", invoice.vendorName],
     ["Consultant", invoice.consultantName ?? "—"],
     ["Project", invoice.project ?? "—"],
     ["Hours Billed", `${invoiceHours} hrs`],
-    ["Hourly Rate", `$${invoiceRate}/hr`],
+    ["Hourly Rate", invoice.hourlyRate !== null ? `$${invoice.hourlyRate}/hr` : "—"],
     ["Invoice Amount", money(invoice.amount)],
     ["Invoice Number", invoice.invoiceNumber],
   ];
@@ -222,8 +274,8 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
                   {checks.length} automated checks against the approved hours sheet
                 </div>
                 <div className="flex flex-col gap-1.5 mt-2">
-                  {checks.map((c) => (
-                    <div key={c.rule} className="flex items-start gap-2 py-1">
+                  {checks.map((c, i) => (
+                    <div key={`${c.rule}-${i}`} className="flex items-start gap-2 py-1">
                       <div className="shrink-0 mt-0.5">
                         {c.status === "flagged" ? (
                           <div className="size-4 rounded-full bg-danger text-white flex items-center justify-center">
@@ -281,49 +333,96 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
         <div className="p-5 pb-3.5">
           <div className="font-display font-semibold text-[15.5px]">Reconciliation</div>
           <div className="text-[12.5px] text-muted-foreground">
-            Invoice vs. approved {checks ? "roster" : "QuickBooks"} record
+            {isMultiConsultant
+              ? "Invoice vs. approved roster record, per consultant"
+              : `Invoice vs. approved ${checks ? "roster" : "QuickBooks"} record`}
           </div>
         </div>
-        <div className="flex border-t border-b border-border">
-          <div className="flex-1 p-5 bg-surface-2">
-            <div className="text-[10.5px] uppercase tracking-wide text-text-faint font-bold mb-2.5">
-              Invoice Hours
+        {isMultiConsultant ? (
+          <div className="border-t border-border">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-[10.5px] uppercase tracking-wide text-text-faint font-bold bg-surface-2">
+                  <th className="text-left font-bold px-5 py-2.5">Consultant</th>
+                  <th className="text-right font-bold px-3 py-2.5">Invoice Hrs</th>
+                  <th className="text-right font-bold px-3 py-2.5">Approved Hrs</th>
+                  <th className="text-right font-bold px-3 py-2.5">Invoice Rate</th>
+                  <th className="text-right font-bold px-3 py-2.5">Approved Rate</th>
+                  <th className="text-right font-bold px-5 py-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perConsultantRows.map((row) => (
+                  <tr key={row.name} className="border-t border-border">
+                    <td className="px-5 py-2.5 font-medium">{row.name}</td>
+                    <td className="px-3 py-2.5 text-right font-mono">
+                      {row.invoiceHours !== null ? `${row.invoiceHours} hrs` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono">
+                      {row.matched && row.approvedHours !== null ? `${row.approvedHours} hrs` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono">
+                      {row.invoiceRate !== null ? `$${row.invoiceRate}/hr` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono">
+                      {row.matched && row.approvedRate !== null ? `$${row.approvedRate}/hr` : "—"}
+                    </td>
+                    <td className="px-5 py-2.5 text-right">
+                      {!row.matched ? (
+                        <span className="text-text-faint font-medium">No roster match</span>
+                      ) : row.flagged ? (
+                        <span className="text-danger font-semibold">Flagged</span>
+                      ) : (
+                        <span className="text-success font-semibold">Matches</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex border-t border-b border-border">
+            <div className="flex-1 p-5 bg-surface-2">
+              <div className="text-[10.5px] uppercase tracking-wide text-text-faint font-bold mb-2.5">
+                Invoice Hours
+              </div>
+              <div className="font-mono text-[26px] font-semibold">
+                {invoiceHours} <span className="text-[14px] font-medium text-muted-foreground">hrs</span>
+              </div>
+              <div className="flex justify-between text-[12.5px] pt-2 mt-2 border-t border-dashed border-border">
+                <span className="text-muted-foreground">Rate</span>
+                <span className="font-mono">{invoice.hourlyRate !== null ? `$${invoiceRate}/hr` : "—"}</span>
+              </div>
+              <div className="flex justify-between text-[12.5px] pt-1.5">
+                <span className="text-muted-foreground">Amount</span>
+                <span className="font-mono">{money(invoice.amount)}</span>
+              </div>
             </div>
-            <div className="font-mono text-[26px] font-semibold">
-              {invoiceHours} <span className="text-[14px] font-medium text-muted-foreground">hrs</span>
-            </div>
-            <div className="flex justify-between text-[12.5px] pt-2 mt-2 border-t border-dashed border-border">
-              <span className="text-muted-foreground">Rate</span>
-              <span className="font-mono">${invoiceRate}/hr</span>
-            </div>
-            <div className="flex justify-between text-[12.5px] pt-1.5">
-              <span className="text-muted-foreground">Amount</span>
-              <span className="font-mono">{money(invoice.amount)}</span>
+            <div className="w-0 border-l-2 border-dashed border-border-strong" />
+            <div className="flex-1 p-5 bg-surface-2">
+              <div className="text-[10.5px] uppercase tracking-wide text-text-faint font-bold mb-2.5">
+                {checks ? "Approved Hours" : "QuickBooks Hours"}
+              </div>
+              <div className="font-mono text-[26px] font-semibold">
+                {checks ? (hasRosterEntry ? (rosterHours ?? invoiceHours) : 0) : ts ? ts.hours : 0}{" "}
+                <span className="text-[14px] font-medium text-muted-foreground">hrs</span>
+              </div>
+              <div className="flex justify-between text-[12.5px] pt-2 mt-2 border-t border-dashed border-border">
+                <span className="text-muted-foreground">Rate</span>
+                <span className="font-mono">
+                  ${checks ? (hasRosterEntry ? rosterRate : 0) : ts ? ts.hourlyRate : 0}/hr
+                </span>
+              </div>
+              <div className="flex justify-between text-[12.5px] pt-1.5">
+                <span className="text-muted-foreground">Amount</span>
+                <span className="font-mono">
+                  {money(checks ? (hasRosterEntry ? (rosterAmount ?? 0) : 0) : (tsAmount ?? 0))}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="w-0 border-l-2 border-dashed border-border-strong" />
-          <div className="flex-1 p-5 bg-surface-2">
-            <div className="text-[10.5px] uppercase tracking-wide text-text-faint font-bold mb-2.5">
-              {checks ? "Approved Hours" : "QuickBooks Hours"}
-            </div>
-            <div className="font-mono text-[26px] font-semibold">
-              {checks ? (hasRosterEntry ? (rosterHours ?? invoiceHours) : 0) : ts ? ts.hours : 0}{" "}
-              <span className="text-[14px] font-medium text-muted-foreground">hrs</span>
-            </div>
-            <div className="flex justify-between text-[12.5px] pt-2 mt-2 border-t border-dashed border-border">
-              <span className="text-muted-foreground">Rate</span>
-              <span className="font-mono">
-                ${checks ? (hasRosterEntry ? rosterRate : 0) : ts ? ts.hourlyRate : 0}/hr
-              </span>
-            </div>
-            <div className="flex justify-between text-[12.5px] pt-1.5">
-              <span className="text-muted-foreground">Amount</span>
-              <span className="font-mono">
-                {money(checks ? (hasRosterEntry ? (rosterAmount ?? 0) : 0) : (tsAmount ?? 0))}
-              </span>
-            </div>
-          </div>
-        </div>
+        )}
         <div
           className={`flex items-center justify-between px-5 py-3.5 ${invoice.overpay > 0 ? "bg-danger-soft" : "bg-success-soft"}`}
         >
@@ -467,14 +566,12 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   disabled={!!action || reportAction.isPending || isHistorical}
                   className="gap-1.5"
-                  onClick={() =>
-                    report && reportAction.mutate({ reportId: report.id, action: "APPROVED" }, { onSuccess: () => toast.success("Payment approved") })
-                  }
+                  onClick={() => runAction("APPROVED", "Payment approved")}
                 >
                   <Check className="size-3.5" /> Approve Payment
                 </Button>
@@ -483,9 +580,7 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
                   variant="outline"
                   className="gap-1.5 border-transparent bg-danger-soft text-danger hover:bg-danger-soft/80"
                   disabled={!!action || reportAction.isPending || isHistorical}
-                  onClick={() =>
-                    report && reportAction.mutate({ reportId: report.id, action: "REJECTED" }, { onSuccess: () => toast.success("Invoice rejected") })
-                  }
+                  onClick={() => runAction("REJECTED", "Invoice rejected")}
                 >
                   <X className="size-3.5" /> Reject Invoice
                 </Button>
@@ -504,6 +599,18 @@ function AuditResults({ invoice }: { invoice: NonNullable<ReturnType<typeof useI
                 >
                   <Mail className="size-3.5" /> Request Clarification
                 </Button>
+                {fromTab && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="gap-1.5 ml-auto"
+                    disabled={!nextInvoice}
+                    onClick={() => nextInvoice && router.push(`/invoices/${nextInvoice.id}?from=${fromTab}`)}
+                  >
+                    {nextInvoice ? "Next Invoice" : "End of queue"}
+                    <ArrowRight className="size-3.5" />
+                  </Button>
+                )}
               </div>
               {action && (
                 <div className="text-[12.5px] font-semibold text-primary flex items-center gap-1.5">

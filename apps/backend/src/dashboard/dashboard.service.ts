@@ -23,18 +23,28 @@ export class DashboardService {
     const total = invoices.length;
     const totalValue = invoices.reduce((s, i) => s + Number(i.amount), 0);
 
+    // "Approved"/"Pending Approval"/"Rejected" below are the human decision
+    // (Invoice.approvalStatus) — deliberately not the AI's own risk label, which is a
+    // different concept that happens to also use the word "Approved" for a clean risk score.
     let approved = 0;
+    let pendingApproval = 0;
+    let rejected = 0;
+    let lowRisk = 0; // AI risk label "Approved" (clean score) — for the Risk Distribution chart only
     let flagged = 0;
     let highRisk = 0;
     let savings = 0;
 
     for (const inv of invoices) {
+      if (inv.approvalStatus === "APPROVED") approved++;
+      else if (inv.approvalStatus === "REJECTED") rejected++;
+      else pendingApproval++;
+
       if (inv.status !== "AUDITED") continue;
       const riskScore = inv.auditReports[0]?.overallRiskScore ?? null;
       const label = riskLabel(riskScore);
-      if (label === "Approved") approved++;
+      if (label === "Approved") lowRisk++;
       else if (label === "Flagged") flagged++;
-      else highRisk++;
+      else if (label === "High Risk") highRisk++;
 
       const reportOverpay = inv.auditReports[0]?.overpayEstimate;
       const timesheetAmount = inv.matchedTimesheet
@@ -67,6 +77,9 @@ export class DashboardService {
       total,
       totalValue,
       approved,
+      pendingApproval,
+      rejected,
+      lowRisk,
       flagged,
       highRisk,
       savings,

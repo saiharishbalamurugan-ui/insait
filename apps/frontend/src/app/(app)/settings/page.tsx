@@ -1,21 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Database, Mail, Bell, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-
-const INTEGRATIONS = [
-  { name: "QuickBooks Online", desc: "Approved timesheets & payroll sync", status: "Connected", icon: Database },
-  { name: "Vendor Email Inbox", desc: "Automatic mailbox ingestion — not yet built", status: "Planned", icon: Mail },
-  { name: "Slack Notifications", desc: "#finance-alerts channel", status: "Connected", icon: Bell },
-];
+import { useSession } from "@/lib/hooks/use-session";
+import { initials } from "@/lib/format";
+import { UsersPanel } from "@/components/settings/users-panel";
 
 export default function SettingsPage() {
   const [isDark, setIsDark] = useState(false);
+  const { data: session } = useSession();
+  const user = session?.user;
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains("dark"));
@@ -51,33 +49,6 @@ export default function SettingsPage() {
 
           <Card>
             <CardContent className="p-5">
-              <div className="font-display font-semibold text-[15.5px]">Connected Systems</div>
-              <div className="text-[12.5px] text-muted-foreground mb-1">Integrations powering automated invoice auditing.</div>
-              {INTEGRATIONS.map((i) => (
-                <div key={i.name} className="flex items-center gap-3 py-3 border-t border-border">
-                  <div className="size-[34px] rounded-[9px] bg-secondary text-muted-foreground flex items-center justify-center shrink-0">
-                    <i.icon className="size-4" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-[13.5px]">{i.name}</div>
-                    <div className="text-[12px] text-text-faint">{i.desc}</div>
-                  </div>
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-[3px] rounded-full",
-                      i.status === "Connected" ? "bg-success-soft text-success" : "bg-secondary text-text-faint",
-                    )}
-                  >
-                    <span className={cn("size-1.5 rounded-full", i.status === "Connected" ? "bg-success" : "bg-text-faint")} />
-                    {i.status}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-5">
               <div className="font-display font-semibold text-[15.5px]">How Risk Scoring Works</div>
               <div className="text-[12.5px] text-muted-foreground mb-3">
                 Every discrepancy is flagged, no matter how small — 0.5 hours or $1 off still gets caught. The risk
@@ -102,15 +73,21 @@ export default function SettingsPage() {
               <div className="text-[12.5px] text-muted-foreground mb-1">Account details for this workspace.</div>
               <div className="flex items-center gap-3 py-2.5">
                 <div className="size-11 rounded-full bg-gradient-to-br from-indigo to-primary text-white flex items-center justify-center text-[15px] font-bold">
-                  JM
+                  {user ? initials(user.name) : "—"}
                 </div>
                 <div>
-                  <div className="font-bold text-[14px]">Jordan Meyers</div>
-                  <div className="text-[12px] text-text-faint">jordan.meyers@company.com · AP Finance Lead</div>
+                  <div className="font-bold text-[14px]">{user?.name ?? "…"}</div>
+                  <div className="text-[12px] text-text-faint">
+                    {user?.email} · {user?.role === "ADMIN" ? "Admin" : "Reviewer"}
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          <div className="col-span-2">
+            <UsersPanel />
+          </div>
         </div>
       </PageContent>
     </>

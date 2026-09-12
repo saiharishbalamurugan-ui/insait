@@ -15,7 +15,7 @@ export function useMonths() {
 export function useCreateMonth() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => apiClient.post<Month>("/months"),
+    mutationFn: (label?: string) => apiClient.post<Month>("/months", label ? { label } : undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["months"] });
     },
@@ -26,6 +26,19 @@ export function useClearMonthData() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (label: string) => apiClient.delete<{ clearedInvoices: number; clearedRosterRows: number }>(`/months/${label}/data`),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
+  });
+}
+
+export function useDeleteMonth() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (label: string) =>
+      apiClient.delete<{ deletedInvoices: number; deletedRosterRows: number; newCurrentLabel: string | null }>(
+        `/months/${label}`,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries();
     },

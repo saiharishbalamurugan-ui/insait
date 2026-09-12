@@ -59,6 +59,34 @@ const EXTRACTION_SCHEMA = {
       type: ["number", "null"],
       description: "The same payment terms as a number of days from receipt (0 for Due on Receipt, 45 for Net 45, etc). Null if paymentTermsLabel is null.",
     },
+    lineItems: {
+      type: "array",
+      description:
+        "Every billable line item on the invoice, exactly as itemized. Most invoices have one line " +
+        "for one consultant; staffing invoices sometimes bill multiple different consultants as separate " +
+        "lines on the same invoice — emit one entry per line in that case, each with its own consultant name.",
+      items: {
+        type: "object",
+        properties: {
+          consultantName: {
+            type: ["string", "null"],
+            description: "The specific person this line item bills for, if identifiable from the line's description. Null if this line isn't tied to a named person.",
+          },
+          description: { type: "string" },
+          hours: {
+            type: ["number", "null"],
+            description: "Hours for this line, if the quantity represents actual hours worked. Null if the quantity is a unit other than hours (e.g. a flat monthly fee).",
+          },
+          hourlyRate: {
+            type: ["number", "null"],
+            description: "This line's rate, only if it is genuinely a $/hour rate. Null if the 'rate' shown is actually a lump-sum/flat amount rather than a true per-hour rate — do not divide a flat fee by a nominal '1 hour' quantity to fabricate an hourly rate.",
+          },
+          amount: { type: "number" },
+        },
+        required: ["consultantName", "description", "hours", "hourlyRate", "amount"],
+        additionalProperties: false,
+      },
+    },
     fieldPositions: {
       type: "array",
       description:
@@ -93,10 +121,19 @@ const EXTRACTION_SCHEMA = {
     "periodEnd",
     "paymentTermsLabel",
     "paymentTermsDays",
+    "lineItems",
     "fieldPositions",
   ],
   additionalProperties: false,
 } as const;
+
+export interface ExtractedLineItem {
+  consultantName: string | null;
+  description: string;
+  hours: number | null;
+  hourlyRate: number | null;
+  amount: number;
+}
 
 export interface ExtractedInvoiceData {
   vendorName: string;
@@ -112,6 +149,7 @@ export interface ExtractedInvoiceData {
   periodEnd: string | null;
   paymentTermsLabel: string | null;
   paymentTermsDays: number | null;
+  lineItems?: ExtractedLineItem[];
   fieldPositions: FieldPosition[];
   fileUrl: string;
   mimeType: string;
@@ -156,7 +194,25 @@ export class InvoiceExtractionService {
         "'Net 30', 'Payment due within 45 days', 'Due on Receipt') — report both the label as printed/implied and " +
         "the equivalent number of days from receipt. If no payment terms appear anywhere, leave both null rather " +
         "than assuming a default. " +
-        "Also report the approximate on-page location of each field you found, normalized 0-1 relative to page size.",
+        "All dates you output must be ISO 8601 (YYYY-MM-DD), but the invoice itself may print dates in any " +
+        "format. A numeric date like 04/08/2026 is ambiguous — it could be April 8 (US, month/day/year) or " +
+        "August 4 (most of the rest of the world, day/month/year). Never default to month/day/year just because " +
+        "that's a common convention. Instead, determine the vendor's locale from the document itself — country " +
+        "in the billing address, a tax ID format that implies a country (e.g. a GSTIN implies India), phone " +
+        "country code, currency — and use that to resolve the format. Also cross-check against any other date " +
+        "information on the page: if the invoice is described as being for a specific month's work (e.g. a " +
+        "subject line reading 'Invoice for July 2026'), the invoice date must make sense relative to that — an " +
+        "invoice for July's work dated before July even started is a sign the date was misread, not that it was " +
+        "actually issued early. If truly nothing on the document disambiguates it, month/day/year is a reasonable " +
+        "last resort, but only after checking for these signals. " +
+        "Also report the approximate on-page location of each field you found, normalized 0-1 relative to page size. " +
+        "Some staffing invoices bill more than one consultant on the same invoice, one line item each — list " +
+        "every line item in lineItems with its own consultant name. When a line's quantity is labeled 'hour(s)' " +
+        "but the rate next to it is really a flat/lump-sum charge for that person (not a genuine per-hour rate), " +
+        "leave that line's hourlyRate null rather than reporting the flat amount as if it were an hourly rate. " +
+        "For the top-level consultantName/hours/hourlyRate fields: if the invoice has exactly one consultant, " +
+        "fill them in as usual. If it bills multiple different consultants, leave consultantName null and " +
+        "hourlyRate null (there is no single rate that describes the invoice) rather than picking one arbitrarily.",
       messages: [
         {
           role: "user",

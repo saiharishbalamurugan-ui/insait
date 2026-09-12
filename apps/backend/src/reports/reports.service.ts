@@ -67,20 +67,52 @@ export class ReportsService {
       .sort((a, b) => (b.riskLabel === "High Risk" ? 1 : 0) - (a.riskLabel === "High Risk" ? 1 : 0));
   }
 
-  async setReviewAction(reportId: string, action: string) {
+  async setReviewAction(
+    reportId: string,
+    action: string,
+    actorName?: string,
+    notes?: string,
+    actorUserId?: string,
+  ) {
     if (!VALID_ACTIONS.includes(action as (typeof VALID_ACTIONS)[number])) {
       throw new BadRequestException(`action must be one of ${VALID_ACTIONS.join(", ")}`);
     }
     const report = await this.prisma.auditReport.findFirst({
       where: { id: reportId, invoice: { organizationId: DEMO_ORG_ID } },
-      include: { invoice: { select: { month: true } } },
+      include: { invoice: { select: { id: true, month: true } } },
     });
     if (!report) throw new NotFoundException("Audit report not found");
     await this.monthsService.assertCurrent(report.invoice.month);
 
-    return this.prisma.auditReport.update({
-      where: { id: reportId },
-      data: { reviewAction: action as (typeof VALID_ACTIONS)[number], reviewedAt: new Date() },
-    });
+    const typedAction = action as (typeof VALID_ACTIONS)[number];
+    // CLARIFICATION_REQUESTED isn't a final approve/reject decision — it doesn't move the
+    // invoice out of PENDING_APPROVAL and isn't written to the approval log.
+    const approvalStatus = typedAction === "APPROVED" || typedAction === "REJECTED" ? typedAction : undefined;
+
+    const results = await this.prisma.$transaction([
+      this.prisma.auditReport.update({
+        where: { id: reportId },
+        data: { reviewAction: typedAction, reviewedAt: new Date() },
+      }),
+      ...(approvalStatus
+        ? [
+            this.prisma.invoice.update({
+              where: { id: report.invoice.id },
+              data: { approvalStatus },
+            }),
+            this.prisma.approvalLog.create({
+              data: {
+                invoiceId: report.invoice.id,
+                action: approvalStatus,
+                actorUserId: actorUserId?.trim() || null,
+                actorName: actorName?.trim() || null,
+                notes: notes?.trim() || null,
+              },
+            }),
+          ]
+        : []),
+    ]);
+
+    return results[0];
   }
 }

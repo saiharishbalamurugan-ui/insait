@@ -22,6 +22,24 @@ export function useTriggerAudit(id: string) {
   });
 }
 
+export function useDeleteInvoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, actorName, actorUserId }: { id: string; actorName?: string; actorUserId?: string }) => {
+      const params = new URLSearchParams();
+      if (actorName) params.set("actorName", actorName);
+      if (actorUserId) params.set("actorUserId", actorUserId);
+      const qs = params.toString();
+      return apiClient.delete<{ deleted: boolean }>(`/invoices/${id}${qs ? `?${qs}` : ""}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["approval-counts"] });
+    },
+  });
+}
+
 export function useBulkDeleteInvoices() {
   const queryClient = useQueryClient();
   return useMutation({

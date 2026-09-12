@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiAuditQueueService } from "../queue/ai-audit-queue.service";
 import { InvoiceChecksService, CheckResult } from "./invoice-checks.service";
+import { ExtractedLineItem } from "./invoice-extraction.service";
 import { matchConfidence, riskLabel } from "../common/risk.util";
 import { MonthsService } from "../months/months.service";
 
@@ -73,16 +74,20 @@ export class InvoicesService {
       overpay,
       source: invoice.source,
       month: invoice.month,
+      approvalStatus: invoice.approvalStatus,
     };
   }
 
-  async findAll(params: { status?: string; search?: string; month?: string }) {
+  async findAll(params: { status?: string; approvalStatus?: string; search?: string; month?: string }) {
     const where = params.month ? { month: params.month } : {};
     const invoices = await this.loadInvoices(where);
     let list = invoices.map((inv) => this.serialize(inv));
 
     if (params.status && params.status !== "all") {
       list = list.filter((inv) => inv.riskLabel === params.status || inv.status === params.status);
+    }
+    if (params.approvalStatus) {
+      list = list.filter((inv) => inv.approvalStatus === params.approvalStatus);
     }
     if (params.search) {
       const q = params.search.toLowerCase();
@@ -95,6 +100,16 @@ export class InvoicesService {
       );
     }
     return list;
+  }
+
+  async approvalCounts(month?: string) {
+    const where = { organizationId: DEMO_ORG_ID, ...(month ? { month } : {}) };
+    const [pendingApproval, approved, rejected] = await Promise.all([
+      this.prisma.invoice.count({ where: { ...where, approvalStatus: "PENDING_APPROVAL" } }),
+      this.prisma.invoice.count({ where: { ...where, approvalStatus: "APPROVED" } }),
+      this.prisma.invoice.count({ where: { ...where, approvalStatus: "REJECTED" } }),
+    ]);
+    return { pendingApproval, approved, rejected };
   }
 
   async findOne(id: string) {
@@ -120,9 +135,10 @@ export class InvoicesService {
       checks: Array.isArray(extracted?.checks) ? extracted.checks : null,
       lineItems: invoice.lineItems.map((li) => ({
         id: li.id,
+        consultantName: li.consultantName,
         description: li.description,
-        quantity: Number(li.quantity),
-        rate: Number(li.rate),
+        quantity: li.quantity !== null ? Number(li.quantity) : null,
+        rate: li.rate !== null ? Number(li.rate) : null,
         amount: Number(li.amount),
       })),
       matchedTimesheet: invoice.matchedTimesheet
@@ -168,6 +184,29 @@ export class InvoicesService {
     return { jobId: job.id, status: "PROCESSING" };
   }
 
+  async deleteOne(id: string, actorName?: string, actorUserId?: string) {
+    const invoice = await this.prisma.invoice.findFirst({ where: { id, organizationId: DEMO_ORG_ID } });
+    if (!invoice) throw new NotFoundException("Invoice not found");
+    await this.monthsService.assertCurrent(invoice.month);
+
+    // The deletion log is a separate table with no FK to Invoice (see schema comment) so it
+    // survives the delete below — that's the whole point of logging it.
+    await this.prisma.invoiceDeletionLog.create({
+      data: {
+        organizationId: DEMO_ORG_ID,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        vendorName: invoice.vendorName,
+        month: invoice.month,
+        actorUserId: actorUserId?.trim() || null,
+        actorName: actorName?.trim() || null,
+      },
+    });
+    await this.prisma.invoice.delete({ where: { id } });
+
+    return { deleted: true };
+  }
+
   async bulkDelete(ids: string[]) {
     const currentMonth = await this.monthsService.currentLabel();
     const result = await this.prisma.invoice.deleteMany({
@@ -195,9 +234,11 @@ export class InvoicesService {
       uploadedAt: string;
       receivedDate: string;
       extractedData: unknown;
+      lineItems?: ExtractedLineItem[];
     },
     checksService: InvoiceChecksService,
   ) {
+    const lineItems = data.lineItems ?? [];
     const hasLineItem = data.hours !== null && data.hourlyRate !== null;
     const receivedDate = data.receivedDate ? new Date(data.receivedDate) : new Date(data.uploadedAt);
     const currentMonth = await this.monthsService.currentLabel();
@@ -206,6 +247,14 @@ export class InvoicesService {
       data.extractedData && typeof data.extractedData === "object" && "fieldPositions" in data.extractedData
         ? (data.extractedData as { fieldPositions: unknown }).fieldPositions
         : null;
+
+    // A single top-level consultantName can't represent an invoice that bills multiple people —
+    // when the extraction left it null but the line items name more than one person, show all of
+    // them rather than leaving the field blank on the invoice.
+    const distinctLineConsultants = Array.from(
+      new Set(lineItems.map((li) => li.consultantName).filter((n): n is string => !!n)),
+    );
+    const consultantName = data.consultantName ?? (distinctLineConsultants.length > 0 ? distinctLineConsultants.join(", ") : null);
 
     const invoice = await this.prisma.invoice.create({
       data: {
@@ -218,25 +267,36 @@ export class InvoicesService {
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         source: "MANUAL_UPLOAD",
         status: "AUDITED",
-        consultantName: data.consultantName,
+        consultantName,
         project: data.project,
         hours: data.hours,
         hourlyRate: data.hourlyRate,
         fileUrl: data.fileUrl,
         extractedData: data.extractedData as never,
         extractedFieldPositions: fieldPositions as never,
-        lineItems: hasLineItem
-          ? {
-              create: [
-                {
-                  description: data.project ? `${data.project} — consulting hours` : "Consulting hours",
-                  quantity: data.hours!,
-                  rate: data.hourlyRate!,
-                  amount: data.amount,
-                },
-              ],
-            }
-          : undefined,
+        lineItems:
+          lineItems.length > 0
+            ? {
+                create: lineItems.map((li) => ({
+                  consultantName: li.consultantName,
+                  description: li.description,
+                  quantity: li.hours,
+                  rate: li.hourlyRate,
+                  amount: li.amount,
+                })),
+              }
+            : hasLineItem
+              ? {
+                  create: [
+                    {
+                      description: data.project ? `${data.project} — consulting hours` : "Consulting hours",
+                      quantity: data.hours!,
+                      rate: data.hourlyRate!,
+                      amount: data.amount,
+                    },
+                  ],
+                }
+              : undefined,
       },
     });
 
@@ -255,6 +315,7 @@ export class InvoicesService {
         periodEnd: data.periodEnd,
         paymentTermsLabel: data.paymentTermsLabel,
         paymentTermsDays: data.paymentTermsDays,
+        lineItems,
         fieldPositions: [],
         fileUrl: data.fileUrl ?? "",
         mimeType: "",

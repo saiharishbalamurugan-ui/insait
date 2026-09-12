@@ -9,6 +9,8 @@ import { ReportsModule } from "./reports/reports.module";
 import { ChatModule } from "./chat/chat.module";
 import { RosterModule } from "./roster/roster.module";
 import { MonthsModule } from "./months/months.module";
+import { AuthModule } from "./auth/auth.module";
+import { UsersModule } from "./users/users.module";
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { MonthsModule } from "./months/months.module";
     ChatModule,
     RosterModule,
     MonthsModule,
+    AuthModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

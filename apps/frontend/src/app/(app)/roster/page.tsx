@@ -8,7 +8,18 @@ import { PageContent } from "@/components/layout/page-content";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRoster, useUploadRoster, RosterUploadResult } from "@/lib/hooks/use-roster";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  useRoster,
+  useUploadRoster,
+  RosterUploadResult,
+  RosterUploadNeedsMapping,
+  RosterField,
+  REQUIRED_ROSTER_FIELDS,
+  ROSTER_FIELD_LABELS,
+} from "@/lib/hooks/use-roster";
 import { money, initials, initialsColor, fmtDateShort } from "@/lib/format";
 import { ApiError } from "@/lib/api-client";
 import { useMonthContext } from "@/lib/hooks/use-month";
@@ -20,22 +31,57 @@ export default function RosterPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [lastResult, setLastResult] = useState<RosterUploadResult | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [mappingNeeded, setMappingNeeded] = useState<RosterUploadNeedsMapping | null>(null);
 
   function handleFile(file: File) {
     setLastResult(null);
-    upload.mutate(file, {
-      onSuccess: (result) => {
-        setLastResult(result);
-        if (result.failed > 0) {
-          toast.warning(`Loaded ${result.created + result.updated} rows, ${result.failed} couldn't be read.`);
-        } else {
-          toast.success(`Loaded ${result.created} new and updated ${result.updated} existing consultant${result.created + result.updated === 1 ? "" : "s"}.`);
-        }
+    setPendingFile(file);
+    upload.mutate(
+      { file },
+      {
+        onSuccess: (result) => {
+          if (result.needsMapping) {
+            setMappingNeeded(result);
+            return;
+          }
+          setLastResult(result);
+          if (result.failed > 0) {
+            toast.warning(`Loaded ${result.created + result.updated} rows, ${result.failed} couldn't be read.`);
+          } else {
+            toast.success(`Loaded ${result.created} new and updated ${result.updated} existing consultant${result.created + result.updated === 1 ? "" : "s"}.`);
+          }
+        },
+        onError: (err) => {
+          toast.error(err instanceof ApiError ? err.message : "Couldn't read that sheet — try again.");
+        },
       },
-      onError: (err) => {
-        toast.error(err instanceof ApiError ? err.message : "Couldn't read that sheet — try again.");
+    );
+  }
+
+  function submitMapping(mapping: Partial<Record<RosterField, string>>) {
+    if (!pendingFile) return;
+    upload.mutate(
+      { file: pendingFile, mapping },
+      {
+        onSuccess: (result) => {
+          if (result.needsMapping) {
+            setMappingNeeded(result);
+            return;
+          }
+          setMappingNeeded(null);
+          setLastResult(result);
+          if (result.failed > 0) {
+            toast.warning(`Loaded ${result.created + result.updated} rows, ${result.failed} couldn't be read.`);
+          } else {
+            toast.success(`Loaded ${result.created} new and updated ${result.updated} existing consultant${result.created + result.updated === 1 ? "" : "s"}.`);
+          }
+        },
+        onError: (err) => {
+          toast.error(err instanceof ApiError ? err.message : "Couldn't read that sheet — try again.");
+        },
       },
-    });
+    );
   }
 
   const failedRows = lastResult?.results.filter((r) => !r.ok) ?? [];
@@ -86,7 +132,7 @@ export default function RosterPage() {
                 {upload.isPending ? "Reading sheet…" : "Drop your hours sheet here, or click to browse"}
               </div>
               <div className="text-[12px] text-text-faint">
-                CSV or Excel with columns: Name, Approved Hours, Approved Rate, Week Start, Week End, Country
+                Any CSV or Excel format — Audix matches columns by meaning, not exact headers
               </div>
               <input
                 ref={fileInputRef}
@@ -114,7 +160,7 @@ export default function RosterPage() {
                     {failedRows.length} row{failedRows.length > 1 ? "s" : ""} couldn't be loaded
                   </div>
                   <div className="text-[12px] text-muted-foreground mt-0.5 mb-2">
-                    Each one is missing a name, approved hours, or an approved rate in the sheet itself — fill in
+                    Each one is missing a name, approved hours, or a pay rate in the sheet itself — fill in
                     that cell and re-upload to add them.
                   </div>
                   <ul className="text-[12.5px] space-y-1">
@@ -163,7 +209,8 @@ export default function RosterPage() {
                   <TableHead>Week</TableHead>
                   <TableHead>Country</TableHead>
                   <TableHead>Approved Hours</TableHead>
-                  <TableHead>Approved Rate</TableHead>
+                  <TableHead>Pay Rate</TableHead>
+                  <TableHead>Bill Rate</TableHead>
                   <TableHead>Approved Value</TableHead>
                 </TableRow>
               </TableHeader>
@@ -188,6 +235,7 @@ export default function RosterPage() {
                     <TableCell>{r.country}</TableCell>
                     <TableCell className="font-mono">{r.hours} hrs</TableCell>
                     <TableCell className="font-mono">${r.hourlyRate}/hr</TableCell>
+                    <TableCell className="font-mono">{r.billRate !== null ? `$${r.billRate}/hr` : "—"}</TableCell>
                     <TableCell className="font-mono">{money(r.hours * r.hourlyRate)}</TableCell>
                   </TableRow>
                 ))}
@@ -196,6 +244,76 @@ export default function RosterPage() {
           )}
         </Card>
       </PageContent>
+
+      <MappingDialog
+        needsMapping={mappingNeeded}
+        onOpenChange={(open) => !open && setMappingNeeded(null)}
+        onSubmit={submitMapping}
+        isPending={upload.isPending}
+      />
     </>
+  );
+}
+
+function MappingDialog({
+  needsMapping,
+  onOpenChange,
+  onSubmit,
+  isPending,
+}: {
+  needsMapping: RosterUploadNeedsMapping | null;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (mapping: Partial<Record<RosterField, string>>) => void;
+  isPending: boolean;
+}) {
+  const [choices, setChoices] = useState<Partial<Record<RosterField, string>>>({});
+
+  if (!needsMapping) return null;
+
+  const current = { ...needsMapping.detectedMapping, ...choices };
+  const canSubmit = REQUIRED_ROSTER_FIELDS.every((f) => !!current[f]);
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Match your columns</DialogTitle>
+          <DialogDescription>
+            Audix couldn't confidently identify every required column in this sheet. Pick which column holds
+            each field below — the rest were matched automatically.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+          {REQUIRED_ROSTER_FIELDS.map((field) => (
+            <div key={field} className="space-y-1.5">
+              <Label className="text-[12px] text-muted-foreground">
+                {ROSTER_FIELD_LABELS[field]}
+                {needsMapping.missingFields.includes(field) && <span className="text-danger"> — not found</span>}
+              </Label>
+              <select
+                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-[13px] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                value={current[field] ?? ""}
+                onChange={(e) => setChoices((prev) => ({ ...prev, [field]: e.target.value || undefined }))}
+              >
+                <option value="">Select a column…</option>
+                {needsMapping.headers.map((h) => (
+                  <option key={h} value={h}>
+                    {h}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={!canSubmit || isPending} onClick={() => onSubmit(current)}>
+            {isPending ? "Uploading…" : "Continue Upload"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

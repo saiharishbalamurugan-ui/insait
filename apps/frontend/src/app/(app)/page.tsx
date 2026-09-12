@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Database, CheckCircle2, AlertTriangle, ShieldAlert, Sparkles, ChevronRight } from "lucide-react";
+import { FileText, Database, CheckCircle2, AlertTriangle, ShieldAlert, Sparkles, ChevronRight, Clock, XCircle } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,13 +48,31 @@ export default function DashboardPage() {
           tooltip: `Combined dollar amount across every invoice in ${monthLabel}, regardless of status.`,
         },
         {
+          label: "Pending Approval",
+          value: String(stats.pendingApproval),
+          sub: "awaiting a decision",
+          icon: Clock,
+          color: "text-muted-foreground",
+          bg: "bg-secondary",
+          tooltip: `Invoices in ${monthLabel} nobody has approved or rejected yet.`,
+        },
+        {
           label: "Approved",
           value: String(stats.approved),
-          sub: stats.total ? `${pct((stats.approved / stats.total) * 100)} clean match rate` : "—",
+          sub: stats.total ? `${pct((stats.approved / stats.total) * 100)} of ${monthLabel}` : "—",
           icon: CheckCircle2,
           color: "text-success",
           bg: "bg-success-soft",
-          tooltip: `Invoices in ${monthLabel} with a risk score under 20 — no or trivial discrepancies found.`,
+          tooltip: `Invoices in ${monthLabel} a reviewer has explicitly approved for payment — this is the human decision, not the AI's risk score.`,
+        },
+        {
+          label: "Rejected",
+          value: String(stats.rejected),
+          sub: "sent back",
+          icon: XCircle,
+          color: "text-danger",
+          bg: "bg-danger-soft",
+          tooltip: `Invoices in ${monthLabel} a reviewer has explicitly rejected.`,
         },
         {
           label: "Flagged",
@@ -63,7 +81,7 @@ export default function DashboardPage() {
           icon: AlertTriangle,
           color: "text-warning",
           bg: "bg-warning-soft",
-          tooltip: `Invoices in ${monthLabel} with a risk score of 20–74 — real discrepancies worth reviewing before payment.`,
+          tooltip: `Invoices in ${monthLabel} the AI risk score puts at 20–74 — real discrepancies worth reviewing before payment. This is the AI's own read, separate from whether anyone has approved/rejected it yet.`,
         },
         {
           label: "High Risk",
@@ -72,7 +90,7 @@ export default function DashboardPage() {
           icon: ShieldAlert,
           color: "text-danger",
           bg: "bg-danger-soft",
-          tooltip: `Invoices in ${monthLabel} with a risk score of 75+ — severe or multiple discrepancies. Worth holding payment for review.`,
+          tooltip: `Invoices in ${monthLabel} the AI risk score puts at 75+ — severe or multiple discrepancies, worth holding payment for review. This is the AI's own read, separate from whether anyone has approved/rejected it yet.`,
         },
         {
           label: "Est. Savings",
@@ -90,9 +108,9 @@ export default function DashboardPage() {
     <>
       <Topbar />
       <PageContent>
-        <div className="grid grid-cols-3 gap-[18px] mb-[18px]">
+        <div className="grid grid-cols-4 gap-[18px] mb-[18px]">
           {isLoading
-            ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[110px] rounded-xl" />)
+            ? Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-[110px] rounded-xl" />)
             : kpis.map((k) => (
                 <Card key={k.label}>
                   <CardContent className="p-[20px_22px]">
@@ -132,7 +150,7 @@ export default function DashboardPage() {
                 <InfoTooltip text={`How ${monthLabel}'s invoices break down by risk score: Approved (0–19), Flagged (20–74), High Risk (75+).`} />
               </div>
               <div className="text-[12.5px] text-muted-foreground mb-4">Current portfolio breakdown</div>
-              {stats && <RiskDonut approved={stats.approved} flagged={stats.flagged} highRisk={stats.highRisk} />}
+              {stats && <RiskDonut approved={stats.lowRisk} flagged={stats.flagged} highRisk={stats.highRisk} />}
             </CardContent>
           </Card>
         </div>

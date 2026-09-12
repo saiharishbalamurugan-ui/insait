@@ -1,18 +1,24 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { UploadCloud, FileText, Loader2, Check, X, Lock, ArrowRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { UploadCloud, FileText, Loader2, Check, X, Lock, ArrowRight, PartyPopper, Users } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiClient, ApiError } from "@/lib/api-client";
 import { ExtractedInvoiceData, InvoiceDetail } from "@/lib/types";
 import { useMonthContext } from "@/lib/hooks/use-month";
+import { useRoster } from "@/lib/hooks/use-roster";
+import { cn } from "@/lib/utils";
+
+const REDIRECT_DELAY_MS = 3000;
 
 const MAX_FILES = 25;
 const CONCURRENCY = 3;
@@ -30,6 +36,12 @@ interface BatchItem {
   invoiceId?: string;
   invoiceNumber?: string;
   flaggedCount?: number;
+  receivedDate: string;
+  isCustomDate: boolean;
+}
+
+function isFutureDate(dateStr: string) {
+  return dateStr > todayISO();
 }
 
 async function extractInvoice(file: File, receivedDate: string): Promise<ExtractedInvoiceData> {
@@ -57,18 +69,44 @@ async function createInvoice(fields: ExtractedInvoiceData): Promise<InvoiceDetai
     fileUrl: fields.fileUrl,
     uploadedAt: fields.uploadedAt,
     receivedDate: fields.receivedDate,
+    lineItems: fields.lineItems,
     extractedData: fields,
   });
 }
 
 export default function BulkUploadPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { isViewingCurrent, currentMonthLabel } = useMonthContext();
+  const { data: roster } = useRoster();
   const [receivedDate, setReceivedDate] = useState(todayISO());
   const [items, setItems] = useState<BatchItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [showCompletion, setShowCompletion] = useState(false);
+  const [redirectIn, setRedirectIn] = useState(REDIRECT_DELAY_MS / 1000);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
+
+  // The batch runs client-side — navigating away mid-run kills it, which looks like
+  // everything "failed" even though most files already saved fine on the server.
+  useEffect(() => {
+    if (!isRunning) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isRunning]);
+
+  useEffect(() => {
+    if (!showCompletion) return;
+    if (redirectIn <= 0) {
+      router.push("/reports");
+      return;
+    }
+    const t = setTimeout(() => setRedirectIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [showCompletion, redirectIn, router]);
 
   if (currentMonthLabel && !isViewingCurrent) {
     return (
@@ -92,19 +130,61 @@ export default function BulkUploadPage() {
     );
   }
 
+  if (isViewingCurrent && roster !== undefined && roster.length === 0) {
+    return (
+      <>
+        <Topbar />
+        <PageContent className="max-w-[720px]">
+          <Card>
+            <CardContent className="text-center py-16 px-6">
+              <div className="size-14 rounded-2xl bg-secondary text-text-faint flex items-center justify-center mx-auto mb-4">
+                <Users className="size-6" />
+              </div>
+              <div className="font-display font-semibold text-[15px] mb-1">
+                Upload this month's roster first
+              </div>
+              <div className="text-[12.5px] text-text-faint max-w-sm mx-auto mb-4">
+                Invoices are checked against the approved consultant roster, so there's nothing to reconcile
+                against yet for {currentMonthLabel}. Upload this month's roster first, then come back to bulk
+                upload invoices.
+              </div>
+              <Link href="/roster" className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+                Go to Consultant Roster <ArrowRight className="size-3.5" />
+              </Link>
+            </CardContent>
+          </Card>
+        </PageContent>
+      </>
+    );
+  }
+
   function addFiles(fileList: FileList | File[]) {
     const incoming = Array.from(fileList).slice(0, MAX_FILES - items.length);
-    setItems((prev) => [...prev, ...incoming.map((file) => ({ file, status: "pending" as FileStatus }))]);
+    setItems((prev) => [
+      ...prev,
+      ...incoming.map((file) => ({ file, status: "pending" as FileStatus, receivedDate, isCustomDate: false })),
+    ]);
   }
 
   function updateItem(index: number, patch: Partial<BatchItem>) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
   }
 
+  // Batch default only applies to files that haven't been given their own date — a per-file
+  // override, once set, is never silently clobbered by a later change to the batch default.
+  function updateBatchDate(newDate: string) {
+    setReceivedDate(newDate);
+    setItems((prev) => prev.map((it) => (it.isCustomDate ? it : { ...it, receivedDate: newDate })));
+  }
+
+  function updateItemDate(index: number, newDate: string) {
+    updateItem(index, { receivedDate: newDate, isCustomDate: true });
+  }
+
   async function processOne(index: number) {
     updateItem(index, { status: "extracting" });
     try {
-      const fields = await extractInvoice(items[index].file, receivedDate);
+      const fields = await extractInvoice(items[index].file, items[index].receivedDate);
       updateItem(index, { status: "saving" });
       const invoice = await createInvoice(fields);
       const flaggedCount = fields.checks.filter((c) => c.status === "flagged" || c.status === "warning").length;
@@ -129,11 +209,14 @@ export default function BulkUploadPage() {
     setIsRunning(false);
     queryClient.invalidateQueries({ queryKey: ["invoices"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    setRedirectIn(REDIRECT_DELAY_MS / 1000);
+    setShowCompletion(true);
   }
 
   const doneCount = items.filter((i) => i.status === "done").length;
   const failedCount = items.filter((i) => i.status === "failed").length;
   const finished = items.length > 0 && !isRunning && doneCount + failedCount === items.length;
+  const hasInvalidDate = items.some((i) => isFutureDate(i.receivedDate));
 
   return (
     <>
@@ -152,6 +235,45 @@ export default function BulkUploadPage() {
           </Link>
         </div>
 
+        <AnimatePresence>
+          {showCompletion && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mb-[18px]"
+            >
+              <Card className="border-success/40 bg-success-soft">
+                <CardContent className="p-5 flex items-center gap-4">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.1 }}
+                    className="size-12 rounded-full bg-success text-white flex items-center justify-center shrink-0"
+                  >
+                    <PartyPopper className="size-6" />
+                  </motion.div>
+                  <div className="flex-1">
+                    <div className="font-display font-semibold text-[15px] text-success">Batch complete</div>
+                    <div className="text-[12.5px] text-success/80">
+                      {doneCount} saved{failedCount > 0 ? `, ${failedCount} failed` : ""} — heading to Reports in{" "}
+                      {redirectIn}s.
+                    </div>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => setShowCompletion(false)}>
+                      Stay here
+                    </Button>
+                    <Button size="sm" onClick={() => router.push("/reports")}>
+                      Go now
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <Card className="mb-[18px]">
           <CardContent className="p-5">
             <div className="max-w-[240px] mb-4">
@@ -161,10 +283,13 @@ export default function BulkUploadPage() {
               <Input
                 type="date"
                 value={receivedDate}
-                onChange={(e) => setReceivedDate(e.target.value)}
+                onChange={(e) => updateBatchDate(e.target.value)}
                 max={todayISO()}
                 disabled={isRunning}
               />
+              <div className="text-[11px] text-text-faint mt-1">
+                Used for any file that doesn't have its own date set below.
+              </div>
             </div>
 
             <div
@@ -206,10 +331,20 @@ export default function BulkUploadPage() {
                   {items.length} file{items.length > 1 ? "s" : ""} selected
                   {finished && ` — ${doneCount} saved, ${failedCount} failed`}
                 </div>
-                <Button size="sm" className="gap-1.5" disabled={isRunning || items.length === 0} onClick={startBatch}>
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={isRunning || items.length === 0 || hasInvalidDate}
+                  onClick={startBatch}
+                >
                   {isRunning && <Loader2 className="size-3.5 animate-spin" />}
                   {isRunning ? "Processing…" : finished ? "Retry Failed" : "Start Bulk Upload"}
                 </Button>
+              </div>
+            )}
+            {hasInvalidDate && (
+              <div className="text-[11.5px] text-danger mt-2 text-right">
+                Fix the received date on the highlighted file{items.filter((i) => isFutureDate(i.receivedDate)).length > 1 ? "s" : ""} below before starting.
               </div>
             )}
           </CardContent>
@@ -245,6 +380,27 @@ export default function BulkUploadPage() {
                     {item.status === "extracting" && <div className="text-[11.5px] text-text-faint">Reading document…</div>}
                     {item.status === "saving" && <div className="text-[11.5px] text-text-faint">Running checks & saving…</div>}
                     {item.status === "failed" && <div className="text-[11.5px] text-danger">{item.error}</div>}
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-1.5">
+                      {item.isCustomDate && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand-soft text-primary shrink-0">
+                          Custom date
+                        </span>
+                      )}
+                      <Input
+                        type="date"
+                        value={item.receivedDate}
+                        max={todayISO()}
+                        disabled={item.status !== "pending" && item.status !== "failed"}
+                        onChange={(e) => updateItemDate(i, e.target.value)}
+                        aria-invalid={isFutureDate(item.receivedDate)}
+                        className="h-7 w-[132px] text-[11.5px] px-2"
+                      />
+                    </div>
+                    {isFutureDate(item.receivedDate) && (
+                      <div className="text-[10.5px] text-danger">Can&apos;t be in the future</div>
+                    )}
                   </div>
                   {item.status === "done" && item.invoiceId && (
                     <Link

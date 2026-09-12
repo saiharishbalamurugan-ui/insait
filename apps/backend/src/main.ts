@@ -7,7 +7,11 @@ import { AppSecretGuard } from "./common/app-secret.guard";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.enableCors({ origin: true, credentials: true, allowedHeaders: ["Content-Type", "x-app-secret"] });
+  app.enableCors({
+    origin: true,
+    credentials: true,
+    allowedHeaders: ["Content-Type", "x-app-secret", "x-session-token"],
+  });
   app.useGlobalGuards(new AppSecretGuard());
   app.useStaticAssets(join(process.cwd(), "uploads"), { prefix: "/uploads" });
   const port = process.env.BACKEND_PORT ?? 4000;

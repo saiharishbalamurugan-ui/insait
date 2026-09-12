@@ -36,7 +36,7 @@ export function ScanSequence({
       />
       <div className="flex flex-col gap-2.5 pt-1">
         {checks.map((check, i) => (
-          <StepRow key={check.rule} check={check} state={i < currentIndex ? "done" : i === currentIndex ? "active" : "pending"} />
+          <StepRow key={`${check.rule}-${i}`} check={check} state={i < currentIndex ? "done" : i === currentIndex ? "active" : "pending"} />
         ))}
       </div>
     </div>

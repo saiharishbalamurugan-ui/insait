@@ -12,26 +12,27 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useInvoices } from "@/lib/hooks/use-invoices";
+import { useApprovalCounts, useInvoices } from "@/lib/hooks/use-invoices";
 import { useBulkDeleteInvoices } from "@/lib/hooks/use-invoice";
 import { useMonthContext } from "@/lib/hooks/use-month";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { money, fmtDateShort, initials, initialsColor, timeAgo } from "@/lib/format";
-import { StatusBadge, invoiceDisplayStatus } from "@/components/invoices/status-badge";
+import { StatusBadge, ApprovalBadge, invoiceDisplayStatus } from "@/components/invoices/status-badge";
+import { ApprovalStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "Approved", label: "Approved" },
-  { key: "Flagged", label: "Flagged" },
-  { key: "High Risk", label: "High Risk" },
-] as const;
+const APPROVAL_TABS: { key: ApprovalStatus; label: string; countKey: "pendingApproval" | "approved" | "rejected" }[] = [
+  { key: "PENDING_APPROVAL", label: "Pending Approval", countKey: "pendingApproval" },
+  { key: "APPROVED", label: "Approved", countKey: "approved" },
+  { key: "REJECTED", label: "Rejected", countKey: "rejected" },
+];
 
 export default function InvoicesPage() {
   const router = useRouter();
-  const [filter, setFilter] = useState<string>("all");
+  const [tab, setTab] = useState<ApprovalStatus>("PENDING_APPROVAL");
   const [search, setSearch] = useState("");
-  const { data: invoices, isLoading } = useInvoices({ status: filter !== "all" ? filter : undefined, search });
+  const { data: invoices, isLoading } = useInvoices({ approvalStatus: tab, search });
+  const { data: counts } = useApprovalCounts();
   const { isViewingCurrent } = useMonthContext();
   const bulkDelete = useBulkDeleteInvoices();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -56,24 +57,35 @@ export default function InvoicesPage() {
     <>
       <Topbar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search invoices, vendors, consultants..." />
       <PageContent>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex flex-wrap gap-2">
-            {FILTERS.map((f) => (
+            {APPROVAL_TABS.map((t) => (
               <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
+                key={t.key}
+                onClick={() => {
+                  setTab(t.key);
+                  setSelected(new Set());
+                }}
                 className={cn(
-                  "px-3.5 py-1.5 rounded-lg text-[12.5px] font-semibold border transition-colors",
-                  filter === f.key
+                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[12.5px] font-semibold border transition-colors whitespace-nowrap",
+                  tab === t.key
                     ? "bg-foreground text-background border-foreground"
                     : "bg-card text-muted-foreground border-border",
                 )}
               >
-                {f.label}
+                {t.label}
+                <span
+                  className={cn(
+                    "text-[11px] font-mono px-1.5 py-0.5 rounded-full",
+                    tab === t.key ? "bg-background/15" : "bg-secondary",
+                  )}
+                >
+                  {counts ? counts[t.countKey] : "—"}
+                </span>
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {selected.size > 0 ? (
               <Button variant="destructive" size="sm" className="gap-1.5" onClick={() => setConfirmOpen(true)}>
                 <Trash2 className="size-3.5" />
@@ -125,23 +137,28 @@ export default function InvoicesPage() {
                   <TableHead>Vendor</TableHead>
                   <TableHead>Billing Period</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Risk</TableHead>
+                  <TableHead>Approval</TableHead>
                   <TableHead>Received</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {list.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8}>
+                    <TableCell colSpan={9}>
                       <div className="text-center py-12 text-muted-foreground">
                         <Search className="size-8 mx-auto mb-3 text-text-faint" />
-                        No invoices match your search.
+                        No invoices in this tab.
                       </div>
                     </TableCell>
                   </TableRow>
                 )}
                 {list.map((inv) => (
-                  <TableRow key={inv.id} className="cursor-pointer" onClick={() => router.push(`/invoices/${inv.id}`)}>
+                  <TableRow
+                    key={inv.id}
+                    className="cursor-pointer"
+                    onClick={() => router.push(`/invoices/${inv.id}?from=${tab}`)}
+                  >
                     {isViewingCurrent && (
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox checked={selected.has(inv.id)} onCheckedChange={() => toggleOne(inv.id)} />
@@ -174,6 +191,9 @@ export default function InvoicesPage() {
                     <TableCell className="font-mono">{money(inv.amount)}</TableCell>
                     <TableCell>
                       <StatusBadge status={invoiceDisplayStatus(inv.status, inv.riskLabel)} />
+                    </TableCell>
+                    <TableCell>
+                      <ApprovalBadge status={inv.approvalStatus} />
                     </TableCell>
                     <TableCell className="text-text-faint">{timeAgo(inv.issueDate)}</TableCell>
                   </TableRow>

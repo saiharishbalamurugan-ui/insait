@@ -23,6 +23,8 @@ Generate two random secrets once (any password generator, 20+ characters) and re
 - `REDIS_URL` — same idea, `${{Redis.REDIS_URL}}`
 - `ANTHROPIC_API_KEY` — your Claude API key
 - `API_SHARED_SECRET` — `SHARED_SECRET_VALUE`
+- `SESSION_SECRET` — `SESSION_SECRET_VALUE` (must match the frontend's copy exactly — the backend independently verifies the signed session token on Admin-only endpoints like Users management)
+- `FRONTEND_URL` — the frontend service's public Railway URL (e.g. `https://audix.up.railway.app`) — used to build the links in user invite emails/messages; if unset, invite links point at `localhost:3000` and won't work for anyone but you
 - `S3_BUCKET`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — for uploaded invoice files. **Required on Railway** — the container's local disk is wiped on every redeploy, so without these, every uploaded invoice file becomes a broken link the next time you deploy. Create an S3 bucket, an IAM user scoped to just that bucket (`s3:PutObject`, `s3:GetObject`), and set these four. If unset, the backend silently falls back to local disk (fine for local dev, not for Railway).
 - `S3_PUBLIC_URL` (optional) — only needed if the bucket is behind a CDN/custom domain rather than the default `https://<bucket>.s3.amazonaws.com`.
 
@@ -34,8 +36,7 @@ Generate two random secrets once (any password generator, 20+ characters) and re
 **frontend:**
 - `NEXT_PUBLIC_API_URL` — the backend service's public Railway URL (e.g. `https://audix-backend.up.railway.app`)
 - `NEXT_PUBLIC_API_SHARED_SECRET` — `SHARED_SECRET_VALUE` (**must also be added as a Build Variable**, not just a runtime one — Next.js bakes `NEXT_PUBLIC_*` vars into the client bundle at build time)
-- `APP_PASSWORD` — the actual password you and your HR manager will type to sign in
-- `SESSION_SECRET` — `SESSION_SECRET_VALUE`
+- `SESSION_SECRET` — `SESSION_SECRET_VALUE` — signs the login cookie. Real per-user accounts (Settings > Users) replaced the old shared-password gate, so there's no `APP_PASSWORD` anymore; the very first Admin account has to be created directly in the database (see the auth module's seed/setup notes) since invites require an existing Admin to send them.
 
 ## First deploy
 

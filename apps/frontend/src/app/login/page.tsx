@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { APP_FULL_NAME } from "@/lib/brand";
+import { setSessionToken } from "@/lib/session-token";
 
 export default function LoginPage() {
   return (
@@ -21,6 +22,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -33,7 +35,7 @@ function LoginForm() {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -41,6 +43,7 @@ function LoginForm() {
         setIsPending(false);
         return;
       }
+      setSessionToken(data.token);
       router.replace(searchParams.get("next") || "/");
       router.refresh();
     } catch {
@@ -61,20 +64,32 @@ function LoginForm() {
           </div>
           <form onSubmit={handleSubmit} className="space-y-3.5">
             <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-[12px] text-muted-foreground">
+                Email
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+              />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="password" className="text-[12px] text-muted-foreground">
                 Password
               </Label>
               <Input
                 id="password"
                 type="password"
-                autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter the shared password"
+                placeholder="Enter your password"
               />
             </div>
             {error && <div className="text-[12.5px] text-danger">{error}</div>}
-            <Button type="submit" className="w-full gap-1.5" disabled={isPending || !password}>
+            <Button type="submit" className="w-full gap-1.5" disabled={isPending || !email || !password}>
               {isPending && <Loader2 className="size-3.5 animate-spin" />}
               Sign in
             </Button>

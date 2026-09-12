@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { Topbar } from "@/components/layout/topbar";
 import { PageContent } from "@/components/layout/page-content";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useExtractInvoice, useCreateInvoice, useRecomputeChecks } from "@/lib/hooks/use-upload-invoice";
@@ -16,6 +17,7 @@ import { ExtractedInvoiceData } from "@/lib/types";
 import { ApiError } from "@/lib/api-client";
 import { ScanSequence } from "@/components/upload/scan-sequence";
 import { useMonthContext } from "@/lib/hooks/use-month";
+import { useRoster } from "@/lib/hooks/use-roster";
 import { PaymentTermsPicker } from "@/components/upload/payment-terms-picker";
 
 type Stage = "pick" | "received-date" | "extracting" | "terms-select" | "scanning" | "review";
@@ -27,6 +29,7 @@ function todayISO() {
 export default function UploadInvoicePage() {
   const router = useRouter();
   const { isViewingCurrent, currentMonthLabel } = useMonthContext();
+  const { data: roster } = useRoster();
   const [stage, setStage] = useState<Stage>("pick");
   const [fileName, setFileName] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -54,6 +57,34 @@ export default function UploadInvoicePage() {
                 Uploads always go into the current month. Switch the month selector at the top back to{" "}
                 {currentMonthLabel} to upload an invoice.
               </div>
+            </CardContent>
+          </Card>
+        </PageContent>
+      </>
+    );
+  }
+
+  if (isViewingCurrent && roster !== undefined && roster.length === 0) {
+    return (
+      <>
+        <Topbar />
+        <PageContent className="max-w-[720px]">
+          <Card>
+            <CardContent className="text-center py-16 px-6">
+              <div className="size-14 rounded-2xl bg-secondary text-text-faint flex items-center justify-center mx-auto mb-4">
+                <Users className="size-6" />
+              </div>
+              <div className="font-display font-semibold text-[15px] mb-1">
+                Upload this month's roster first
+              </div>
+              <div className="text-[12.5px] text-text-faint max-w-sm mx-auto mb-4">
+                Invoices are checked against the approved consultant roster, so there's nothing to reconcile
+                against yet for {currentMonthLabel}. Upload this month's roster first, then come back to upload
+                invoices.
+              </div>
+              <Link href="/roster" className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}>
+                Go to Consultant Roster <ArrowRight className="size-3.5" />
+              </Link>
             </CardContent>
           </Card>
         </PageContent>
@@ -130,6 +161,7 @@ export default function UploadInvoicePage() {
         fileUrl: fields.fileUrl,
         uploadedAt: fields.uploadedAt,
         receivedDate: fields.receivedDate,
+        lineItems: fields.lineItems,
         extractedData: fields,
       },
       {
